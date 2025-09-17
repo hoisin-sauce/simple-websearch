@@ -1,0 +1,7 @@
+other config files:
+  - scripts.yaml
+  - sites.yaml
+days till next page check: 5
+auto reset on db init changes: yes
+print sql commands: yes
+seconds between scraping on same site: 3

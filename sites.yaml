@@ -1,0 +1,7 @@
+scraping sites:
+  - https://selenium-python.readthedocs.io/
+allowed sites:
+  - selenium-python.readthedocs.io
+blocked sites:
+  - youtube.com
+limit sites to allowed sites: yes
