@@ -1,1 +1,0 @@
-INSERT INTO InitHash(hash) VALUES (?)

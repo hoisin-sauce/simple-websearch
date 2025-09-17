@@ -1,5 +1,0 @@
-hash script: autohash.sql
-hash insert: inserthash.sql
-hash check: checkhash.sql
-get link: getlink.sql
-insert link: insertlink.sql
