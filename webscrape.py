@@ -292,6 +292,18 @@ def create_handler(domain: str) -> None:
 
     threading.Thread(target=site_handler, args=(domain,)).start()
 
+def old_links_daemon() -> None:
+    while True:
+        urls_to_check = db.execute(config.Config.FIND_OLD_LINKS.value,
+            is_file=True)
+
+        urls_to_check = set(
+            Subdomain(subdomain["link"]) for subdomain in urls_to_check)
+
+        queue_links(urls_to_check)
+
+        time.sleep(config.Config.DAEMON_WAIT_TIME_SECONDS.value)
+
 if __name__ == "__main__":
     db.reset_database()
     insert_link(Subdomain("https://selenium-python.readthedocs.io/"))
