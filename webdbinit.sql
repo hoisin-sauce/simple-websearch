@@ -5,7 +5,7 @@ DROP TABLE IF EXISTS TokenSubdomainLink;
 
 CREATE TABLE Token(
     token INTEGER PRIMARY KEY AUTOINCREMENT,
-    text VARCHAR(20)
+    text VARCHAR(20) UNIQUE
 );
 
 CREATE TABLE Website(
@@ -17,14 +17,14 @@ CREATE TABLE Subdomain(
     url TEXT NOT NULL,
     checked DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (url) REFERENCES Website(url)
-    PRIMARY KEY (url, extension)
 );
 
 CREATE TABLE TokenSubdomainLink(
-    id INTEGER NOT NULL,
+    extension TEXT NOT NULL,
+    url TEXT NOT NULL,
     token INTEGER NOT NULL,
     occurrences INTEGER NOT NULL,
-    FOREIGN KEY (id) REFERENCES Subdomain(id),
+    FOREIGN KEY (extension, url) REFERENCES Subdomain(extension, url),
     FOREIGN KEY (token) REFERENCES Token(token),
-    PRIMARY KEY (id, token)
+    PRIMARY KEY (extension, url, token)
 );

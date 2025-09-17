@@ -1,4 +1,3 @@
-import sqlite3
 import datetime
 import webstorage
 import queue
@@ -28,6 +27,7 @@ class QueueContainer:
         return handler_name in self.active_handlers
 
     def register_handler(self, handler: str):
+        assert not self.handler_exists(handler)
         self.active_handlers.add(handler)
 
     def unregister_handler(self, handler: str):
@@ -122,11 +122,17 @@ def separate_link(link: str, parent_url: str | None = None) -> Subdomain:
 
 
 def process_url(link: str,
-                rp: robots.RobotsParser | None = None) -> tuple[set, dict]:
+        rp: robots.RobotsParser | None = None) -> tuple[set, dict[str, int]]:
+    """
+    Process url to get tokens and links found on page with checking
+    :param link: Link to site
+    :param rp: optional robots.RobotsParser
+    :return:
+    """
     domain = separate_link(link).domain
     if rp is None:
         rp = get_robots_handler(link)
-    assert site_is_allowed(Subdomain(link)), \
+    assert site_is_allowed(domain), \
         f"URL {link} is not allowed by config"
     assert can_check(link, rp=rp), \
         f"URL {link} is not allowed by robots.txt"
@@ -148,9 +154,14 @@ def can_check(link: str, rp: robots.RobotsParser | None = None) -> bool:
         rp = get_robots_handler(link)
     return rp.can_fetch("*", link)
 
-def site_is_allowed(link: Subdomain) -> bool:
-    allowed_sites = link.domain in config.Config.ALLOWED_SITES.value
-    blocked_sites = link.domain in config.Config.BLOCKED_SITES.value
+def site_is_allowed(domain: str) -> bool:
+    """
+    Check if a domain is allowed by local config
+    :param domain: Domain to check
+    :return: Boolean representing if domain is allowed
+    """
+    allowed_sites = domain in config.Config.ALLOWED_SITES.value
+    blocked_sites = domain in config.Config.BLOCKED_SITES.value
     limited_by_config = config.Config.LIMIT_SITES_TO_ALLOWED_SITES.value
 
     return not blocked_sites and (allowed_sites or not limited_by_config)
@@ -182,10 +193,7 @@ def site_handler(domain) -> None:
 
     # Initial check to check if scraping of domain is allowed
     # By local rules
-    assert domain in config.Config.ALLOWED_SITES.value, \
-        f"{domain} not in allowed sites"
-    assert domain not in config.Config.BLOCKED_SITES.value, \
-        f"{domain} is in blocked sites"
+    assert site_is_allowed(domain), f"{domain} is not allowed by config"
 
     # Get the
     local_queue = queues.get_queue(domain)
@@ -203,15 +211,19 @@ def site_handler(domain) -> None:
             # TODO log assertion issue
             continue
 
-        # TODO implement database
-        # update_tokens(to_handle, tokens)
-        # queue_links(links)
+        insert_link(Subdomain(to_handle))
+        update_tokens(to_handle, tokens)
+        queue_links(links)
 
         time.sleep(config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
 
-@db.cursor_wrapper
-def update_tokens(cursor: sqlite3.Cursor, url: str, tokens: set):
-    pass
+def update_tokens(url: str, tokens: dict[str, int]) -> None:
+    site = Subdomain(url)
+    params = {"extension": site.extension, "domain": site.domain}
+    for token, count in tokens.items():
+        params["token"] = token
+        params["occurrences"] = count
+        db.execute_script(config.Config.INSERT_TOKEN.value, params=params)
 
 def link_needs_checking(link: Subdomain) -> bool:
     """
@@ -251,7 +263,12 @@ def insert_link(link: Subdomain) -> None:
     db.execute_script(config.Config.INSERT_LINK.value,
                       params=params)
 
-def queue_links(links: set[Subdomain]):
+def queue_links(links: set[Subdomain]) -> None:
+    """
+    Queue links to their respective site handlers with checking
+    :param links: links to be queued
+    :return:
+    """
     for link in links:
         # Check if link needs checking
         if not link_needs_checking(link):
@@ -262,9 +279,18 @@ def queue_links(links: set[Subdomain]):
             create_handler(link.domain)
         queues.get_queue(link.domain).put(link.get_url())
 
-def create_handler(domain):
+def create_handler(domain: str) -> None:
+    """
+    Starts a thread handling the given domain's scraping
+    :param domain: Domain to be scraped
+    :return:
+    """
+    try:
+        queues.register_handler(domain)
+    except AssertionError:
+        return
+
     threading.Thread(target=site_handler, args=(domain,)).start()
-    queues.register_handler(domain)
 
 if __name__ == "__main__":
     db.reset_database()

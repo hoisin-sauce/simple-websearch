@@ -73,6 +73,7 @@ class Database:
             cursor.executescript(sql_script)
         except sqlite3.OperationalError:
             log.log(sql_script)
+            raise
 
         self.conn.commit()
 
