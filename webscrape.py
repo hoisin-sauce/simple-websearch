@@ -6,24 +6,12 @@ import requests
 import config
 import re
 import robots
-from urllib.parse import urlparse, ParseResult
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import nltk
 import time
 from nltk.corpus import stopwords
 from nltk import PorterStemmer
-import log
-
-class ThreadManager:
-    def __init__(self):
-        self.threads: queue.Queue[threading.Thread] = queue.Queue()
-
-    def join_threads(self):
-        while not self.threads.empty():
-            self.threads.get().join()
-
-    def add_thread(self, thread: threading.Thread):
-        self.threads.put(thread)
 
 class QueueContainer:
     def __init__(self):
@@ -36,7 +24,6 @@ class QueueContainer:
         return self.queues[queue_name]
 
     def handler_exists(self, handler_name: str):
-        log.log(f"handler {handler_name} checking current handlers are {self.active_handlers}")
         return handler_name in self.active_handlers
 
     def register_handler(self, handler: str):
@@ -55,8 +42,6 @@ stopwords = set(stopwords.words('english'))
 
 # noinspection SpellCheckingInspection
 db = webstorage.Database("webscrape.db", "webdbinit.sql")
-
-thread_manager = ThreadManager()
 
 queues = QueueContainer()
 
@@ -181,22 +166,16 @@ def site_is_allowed(domain: str) -> bool:
 
     return not blocked_sites and (allowed_sites or not limited_by_config)
 
-def get_robots_handler(domain: str) -> robots.RobotsParser:
+def get_robots_handler(link: str) -> robots.RobotsParser:
     """
     Get the robots.txt parser from the given link
-    :param domain: domain to get robots.txt parser from
-    :return: parser for domain
+    :param link: link to get robots.txt parser from
+    :return: parser for domain from link
     """
-    robots_txt = ParseResult(
-        scheme="https", netloc=domain, path="robots.txt",
-        params="", query="", fragment="").geturl()
-    try:
-        rp = robots.RobotsParser.from_uri(robots_txt)
-    except ValueError:
-        log.log(
-            f"Robots parser for {link} "
-            + f"failed to be created robots url was {robots_txt}")
-        raise
+    robots_txt = urlparse(link)._replace(
+        params='', query='',
+        fragment='', path="robots.txt").geturl()
+    rp = robots.RobotsParser.from_uri(robots_txt)
     return rp
 
 def site_handler(domain) -> None:
@@ -209,16 +188,12 @@ def site_handler(domain) -> None:
 
     # TODO maintain continuity by using locks
     # ensures only one handler exists for the domain
-    '''
     if queues.handler_exists(domain):
         return
-    '''
 
     # Initial check to check if scraping of domain is allowed
     # By local rules
     assert site_is_allowed(domain), f"{domain} is not allowed by config"
-
-    log.log(f"handler launched for {domain}")
 
     # Get the
     local_queue = queues.get_queue(domain)
@@ -226,14 +201,9 @@ def site_handler(domain) -> None:
 
     while True:
         try:
-            log.log(f"handler {domain} fetching")
             to_handle = local_queue.get()
         except queue.Empty:
-            time.sleep(
-                config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
             continue
-
-        log.log(f"handler {domain} processing {to_handle}")
 
         try:
             links, tokens = process_url(to_handle, rp=rp)
@@ -243,16 +213,13 @@ def site_handler(domain) -> None:
 
         insert_link(Subdomain(to_handle))
         update_tokens(to_handle, tokens)
-        # TODO store links for pagerank
-        # update_links(to_handle, links)
         queue_links(links)
 
         time.sleep(config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
 
 def update_tokens(url: str, tokens: dict[str, int]) -> None:
-    # TODO clear tokens before links are properly checked
     site = Subdomain(url)
-    params = {"extension": site.extension, "url": site.domain}
+    params = {"extension": site.extension, "domain": site.domain}
     for token, count in tokens.items():
         params["token"] = token
         params["occurrences"] = count
@@ -268,12 +235,12 @@ def link_needs_checking(link: Subdomain) -> bool:
         config.Config.GET_LINK.value,
         params=(link.domain, link.extension),
         is_file=True
-    )
+    )[0]
 
     if not link:
         return True
 
-    return bool(link[0]['needsChecking'])
+    return bool(link['needsChecking'])
 
 def insert_link(link: Subdomain) -> None:
     """
@@ -303,17 +270,13 @@ def queue_links(links: set[Subdomain]) -> None:
     :return:
     """
     for link in links:
-        log.log(f"checking link {link}")
         # Check if link needs checking
         if not link_needs_checking(link):
             continue
 
         # Finally commit link to be searched
         if not queues.handler_exists(link.domain):
-            log.log(f"creating handler for {link.domain}")
             create_handler(link.domain)
-
-        log.log(f"handling link {link}")
         queues.get_queue(link.domain).put(link.get_url())
 
 def create_handler(domain: str) -> None:
@@ -327,42 +290,21 @@ def create_handler(domain: str) -> None:
     except AssertionError:
         return
 
-    log.log(f"creating handler for {domain}")
-    handler = threading.Thread(target=site_handler, args=(domain,))
-    thread_manager.add_thread(handler)
-    handler.start()
+    threading.Thread(target=site_handler, args=(domain,)).start()
 
 def old_links_daemon() -> None:
     while True:
-        try:
-            urls_to_check = db.execute(config.Config.FIND_OLD_LINKS.value,
-                is_file=True)
+        urls_to_check = db.execute(config.Config.FIND_OLD_LINKS.value,
+            is_file=True)
 
-            urls_to_check = set(
-                Subdomain(subdomain["link"]) for subdomain in urls_to_check)
+        urls_to_check = set(
+            Subdomain(subdomain["link"]) for subdomain in urls_to_check)
 
-            queue_links(urls_to_check)
+        queue_links(urls_to_check)
 
-            time.sleep(config.Config.DAEMON_WAIT_TIME_SECONDS.value)
-        except Exception as e:
-            log.log(e)
-            raise
-
-def start_scraping() -> None:
-    log.log("Starting background")
-    background_scraper = threading.Thread(target=old_links_daemon, daemon=True)
-    background_scraper.start()
-
-    log.log("Starting primary scraping")
-    sites_to_scrape = set()
-    for site in config.Config.SCRAPING_SITES.value:
-        log.log(f"Starting scraping for {site}")
-        sites_to_scrape.add(Subdomain(site))
-
-    log.log("Queuing links")
-    queue_links(sites_to_scrape)
+        time.sleep(config.Config.DAEMON_WAIT_TIME_SECONDS.value)
 
 if __name__ == "__main__":
     db.reset_database()
-    start_scraping()
-    thread_manager.join_threads()
+    insert_link(Subdomain("https://selenium-python.readthedocs.io/"))
+    link_needs_checking(Subdomain("https://selenium-python.readthedocs.io/"))

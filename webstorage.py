@@ -1,12 +1,9 @@
 import sqlite3
-import threading
-import inspect
 import config
 from typing import Callable, Iterable, Any
 import os
 import hashlib
 import log
-import queue
 
 def dict_factory(cursor, row):
     d = {}
@@ -14,69 +11,27 @@ def dict_factory(cursor, row):
         d[col[0]] = row[idx]
     return d
 
-class Query:
-    def __init__(self, function: Callable, *args, **kwargs):
-        self.function = function
-        self.args = args
-        self.kwargs = kwargs
-        self.result = queue.Queue()
-        self.logging_stack = inspect.stack()[2:]
-
-    def get_result(self):
-        return self.result.get()
-
 class Database:
     def __init__(self, database: str, init_script: str) -> None:
         self.init_script = init_script
-        self.database = database
 
-        # allow connection to be NoneType for initialisation within the daemon
-        self.conn : sqlite3.Connection | None = None
-
-        db_exists = self.database_exists()
-
-        if config.Config.THREADED_SERVER_HANDLING.value:
-            self.command_queue = queue.Queue()
-            self.command_thread = threading.Thread(
-                target=self.handle_queries, daemon=True)
-            self.command_thread.name = f"{database}-thread"
-            self.command_thread.start()
+        if os.path.isfile(database):
+            self.conn = sqlite3.connect(database,
+                detect_types=sqlite3.PARSE_DECLTYPES)
         else:
-            self.conn = sqlite3.connect(database)
-            self.conn.row_factory = dict_factory
-            if config.Config.PRINT_SQL_COMMANDS.value:
-                self.conn.set_trace_callback(log.log)
-
-        if not db_exists:
+            self.conn = sqlite3.connect(database,
+                detect_types=sqlite3.PARSE_DECLTYPES)
             self.reset_database()
+
+        self.conn.row_factory = dict_factory
+
+        if config.Config.PRINT_SQL_COMMANDS.value:
+            self.conn.set_trace_callback(print)
 
         if config.Config.AUTO_RESET_ON_DB_INIT_CHANGES.value:
             self.check_hash()
 
         # TODO automatic click implementation of reset command?
-
-    def database_exists(self) -> bool:
-        return os.path.isfile(self.database)
-
-    def handle_queries(self):
-        self.conn = sqlite3.connect(self.database)
-        self.conn.row_factory = dict_factory
-
-        if config.Config.PRINT_SQL_COMMANDS.value:
-            self.conn.set_trace_callback(log.log)
-
-        while True:
-            query = self.command_queue.get()
-            log.log(query.logging_stack)
-            try:
-                return_value = query.function(*query.args, **query.kwargs)
-            except Exception as e:
-                log.log(
-                    f"Exception: {e} occured whilst processing "
-                    f"{query.logging_stack[0]} with args "
-                    f"{query.args} and kwargs {query.kwargs}")
-                raise
-            query.result.put(return_value)
 
     def get_hash(self) -> str:
         with open(self.init_script, 'rb') as f:
@@ -92,7 +47,7 @@ class Database:
             self.reset_database()
             return
         if len(rows) != 1:
-            log.log("DATABASE RESET INIT HAS CHANGED")
+            print("DATABASE RESET INIT HAS CHANGED")
             self.reset_database()
 
 
@@ -105,14 +60,6 @@ class Database:
 
     def execute_script(self, script: str,
                        params: dict[str, str] | None = None) -> None:
-
-        if config.Config.THREADED_SERVER_HANDLING.value:
-            if threading.current_thread() != self.command_thread:
-                query = Query(self.execute_script, script, params=params)
-                self.command_queue.put(query)
-                query.get_result()
-                return
-
         with open(script, 'r') as f:
             sql_script = f.read()
 
@@ -132,14 +79,6 @@ class Database:
 
     def execute(self, script: str,
                 params=None, is_file=False) -> list[dict[str, Any]]:
-
-        if config.Config.THREADED_SERVER_HANDLING.value:
-            if threading.current_thread() != self.command_thread:
-                query = Query(self.execute, script,
-                              params=params, is_file=is_file)
-                self.command_queue.put(query)
-                return query.get_result()
-
         if params is None:
             params = ()
         if is_file:
@@ -176,7 +115,7 @@ if __name__ == '__main__':
     @db.cursor_wrapper
     def do_shit(cursor: sqlite3.Cursor):
         cursor.execute("SELECT * FROM Website")
-        log.log(cursor.fetchall())
+        print(cursor.fetchall())
 
     get_shit()
     do_shit()
