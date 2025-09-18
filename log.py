@@ -3,8 +3,8 @@ def do_nothing(*args, **kwargs):
     pass
 
 # TODO not be lazy and write logging properly
-# log = print # NOLOG
-log = do_nothing
+log = print # NOLOG
+#  = do_nothing
 
 # TODO implement thread tracing (maybe in a database?) based on threading.setprofile
 

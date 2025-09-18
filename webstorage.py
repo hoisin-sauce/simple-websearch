@@ -67,7 +67,6 @@ class Database:
 
         while True:
             query = self.command_queue.get()
-            log.log(query.logging_stack)
             try:
                 return_value = query.function(*query.args, **query.kwargs)
             except Exception as e:

@@ -5,3 +5,4 @@ get link: getlink.sql
 insert link: insertlink.sql
 insert token: inserttoken.sql
 find old links: daemon.sql
+insert page link: insertconnection.sql

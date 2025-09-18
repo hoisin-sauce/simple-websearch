@@ -3,7 +3,7 @@ INSERT OR IGNORE INTO Website
 VALUES
 ('{url}');
 
-INSERT INTO Subdomain
+INSERT OR REPLACE INTO Subdomain
 (extension, url, checked)
 VALUES
 ('{extension}', '{url}', '{checked}')

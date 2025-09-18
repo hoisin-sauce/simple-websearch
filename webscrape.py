@@ -13,6 +13,9 @@ import time
 from nltk.corpus import stopwords
 from nltk import PorterStemmer
 import log
+import inspect
+
+# TODO change from assertion to simple log and return for disallowed websites
 
 class ThreadManager:
     def __init__(self):
@@ -25,6 +28,7 @@ class ThreadManager:
     def add_thread(self, thread: threading.Thread):
         self.threads.put(thread)
 
+
 class QueueContainer:
     def __init__(self):
         self.queues = dict()
@@ -36,7 +40,8 @@ class QueueContainer:
         return self.queues[queue_name]
 
     def handler_exists(self, handler_name: str):
-        log.log(f"handler {handler_name} checking current handlers are {self.active_handlers}")
+        log.log(
+            f"handler {handler_name} checking current handlers are {self.active_handlers}")
         return handler_name in self.active_handlers
 
     def register_handler(self, handler: str):
@@ -45,6 +50,7 @@ class QueueContainer:
 
     def unregister_handler(self, handler: str):
         self.active_handlers.remove(handler)
+
 
 stemmer = PorterStemmer()
 
@@ -60,18 +66,28 @@ thread_manager = ThreadManager()
 
 queues = QueueContainer()
 
+
 class Subdomain:
     def __init__(self, link, parent_url=None):
         o = urlparse(link)
+        if config.Config.IGNORE_URL_FRAGMENTS.value:
+            o = o._replace(fragment="")
         self.domain = o.netloc if o.netloc else parent_url
-        self.o = o._replace(netloc = self.domain)._replace(scheme = "https")
-        self.extension = o._replace(netloc = "")._replace(scheme = "").geturl()
+        self.o = o._replace(netloc=self.domain)._replace(scheme="https")
+        self.extension = o._replace(netloc="")._replace(scheme="").geturl()
 
     def get_url(self):
         return self.o.geturl()
 
     def __repr__(self):
         return self.o.geturl()
+
+    def __eq__(self, other):
+        return self.o == other.o
+
+    def __hash__(self):
+        return hash(self.o)
+
 
 def get_page_soup(url: str) -> BeautifulSoup:
     """
@@ -83,8 +99,9 @@ def get_page_soup(url: str) -> BeautifulSoup:
     soup = BeautifulSoup(page.content, 'html.parser')
     return soup
 
+
 def get_links(soup: BeautifulSoup,
-              parent_url: str | None = None) -> set[Subdomain]:
+              parent_url: str | None = None) -> dict[Subdomain, int]:
     """
     Extracts links from a BeautifulSoup object
     :param soup: BeautifulSoup object
@@ -92,10 +109,16 @@ def get_links(soup: BeautifulSoup,
     from in case only path specified
     :return: list of links in the object
     """
-    links = set()
-    for link in soup.find_all('a'):
-        links.add(separate_link(link.get('href'), parent_url=parent_url))
+    links = dict()
+    all_links = soup.find_all('a')
+    for link in all_links:
+        if (sub := separate_link(link.get('href'),
+                                parent_url=parent_url)) not in links:
+            links[sub] = 0
+        links[sub] += 1
+    log.log(f"found {len(links)} links making up {links}")
     return links
+
 
 def get_tokens(soup: BeautifulSoup) -> dict:
     """
@@ -137,7 +160,8 @@ def separate_link(link: str, parent_url: str | None = None) -> Subdomain:
 
 
 def process_url(link: str,
-        rp: robots.RobotsParser | None = None) -> tuple[set, dict[str, int]]:
+                rp: robots.RobotsParser | None = None) -> tuple[
+    dict[Subdomain, int], dict[str, int]]:
     """
     Process url to get tokens and links found on page with checking
     :param link: Link to site
@@ -154,8 +178,9 @@ def process_url(link: str,
     soup = get_page_soup(link)
     # TODO write assertion or check for www.robotstxt.org/meta.html meta tags
     tokens = get_tokens(soup)
-    links = get_links(soup, parent_url=domain)
+    links: dict[Subdomain, int] = get_links(soup, parent_url=domain)
     return links, tokens
+
 
 def can_check(link: str, rp: robots.RobotsParser | None = None) -> bool:
     """
@@ -169,6 +194,7 @@ def can_check(link: str, rp: robots.RobotsParser | None = None) -> bool:
         rp = get_robots_handler(link)
     return rp.can_fetch("*", link)
 
+
 def site_is_allowed(domain: str) -> bool:
     """
     Check if a domain is allowed by local config
@@ -180,6 +206,7 @@ def site_is_allowed(domain: str) -> bool:
     limited_by_config = config.Config.LIMIT_SITES_TO_ALLOWED_SITES.value
 
     return not blocked_sites and (allowed_sites or not limited_by_config)
+
 
 def get_robots_handler(domain: str) -> robots.RobotsParser:
     """
@@ -194,10 +221,11 @@ def get_robots_handler(domain: str) -> robots.RobotsParser:
         rp = robots.RobotsParser.from_uri(robots_txt)
     except ValueError:
         log.log(
-            f"Robots parser for {link} "
+            f"Robots parser for {domain} "
             + f"failed to be created robots url was {robots_txt}")
         raise
     return rp
+
 
 def site_handler(domain) -> None:
     """
@@ -233,21 +261,49 @@ def site_handler(domain) -> None:
                 config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
             continue
 
-        log.log(f"handler {domain} processing {to_handle}")
+        print(f"handler {domain} processing {to_handle}")
 
         try:
             links, tokens = process_url(to_handle, rp=rp)
+            print(f"fetched links: {links}")
         except AssertionError:
             # TODO log assertion issue
+            print(f"failed to fetch links: {to_handle}")
             continue
 
         insert_link(Subdomain(to_handle))
         update_tokens(to_handle, tokens)
-        # TODO store links for pagerank
-        # update_links(to_handle, links)
+        update_links(Subdomain(to_handle), links)
         queue_links(links)
 
         time.sleep(config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
+
+
+def update_links(origin: Subdomain, targets: dict[Subdomain, int]) -> None:
+    log.log(f"Update links for {origin} links provided are {targets}")
+
+    assert all(isinstance(target, Subdomain) for target in targets), \
+        "Targets must be subdomains"
+    # TODO clear links on update
+    connection = {
+        "origin_url": origin.domain,
+        "origin_extension": origin.extension
+    }
+
+    for target, occurrences in targets.items():
+        try:
+            connection["target_url"] = target.domain
+            connection["target_extension"] = target.extension
+            connection["occurrences"] = occurrences
+
+        except AttributeError:
+            log.log(
+                f"Error occured while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
+            raise
+
+        print(connection)
+        db.execute_script(config.Config.INSERT_PAGE_LINK.value, params=connection)
+
 
 def update_tokens(url: str, tokens: dict[str, int]) -> None:
     # TODO clear tokens before links are properly checked
@@ -257,6 +313,7 @@ def update_tokens(url: str, tokens: dict[str, int]) -> None:
         params["token"] = token
         params["occurrences"] = count
         db.execute_script(config.Config.INSERT_TOKEN.value, params=params)
+
 
 def link_needs_checking(link: Subdomain) -> bool:
     """
@@ -275,6 +332,7 @@ def link_needs_checking(link: Subdomain) -> bool:
 
     return bool(link[0]['needsChecking'])
 
+
 def insert_link(link: Subdomain) -> None:
     """
     Insert a link into the database
@@ -282,27 +340,28 @@ def insert_link(link: Subdomain) -> None:
     :return:
     """
     next_check_date = (datetime.datetime.now()
-        + datetime.timedelta(
+                       + datetime.timedelta(
                 days=config.Config.DAYS_TILL_NEXT_PAGE_CHECK.value
             )
-        )
+                       )
 
     params = {
-              "url": link.domain,
-              "checked": next_check_date,
-              "extension": link.extension
+        "url": link.domain,
+        "checked": next_check_date,
+        "extension": link.extension
     }
 
     db.execute_script(config.Config.INSERT_LINK.value,
                       params=params)
 
-def queue_links(links: set[Subdomain]) -> None:
+
+def queue_links(links: dict[Subdomain, int]) -> None:
     """
     Queue links to their respective site handlers with checking
     :param links: links to be queued
     :return:
     """
-    for link in links:
+    for link, _ in links.items():
         log.log(f"checking link {link}")
         # Check if link needs checking
         if not link_needs_checking(link):
@@ -315,6 +374,7 @@ def queue_links(links: set[Subdomain]) -> None:
 
         log.log(f"handling link {link}")
         queues.get_queue(link.domain).put(link.get_url())
+
 
 def create_handler(domain: str) -> None:
     """
@@ -332,14 +392,15 @@ def create_handler(domain: str) -> None:
     thread_manager.add_thread(handler)
     handler.start()
 
+
 def old_links_daemon() -> None:
     while True:
         try:
             urls_to_check = db.execute(config.Config.FIND_OLD_LINKS.value,
-                is_file=True)
+                                       is_file=True)
 
-            urls_to_check = set(
-                Subdomain(subdomain["link"]) for subdomain in urls_to_check)
+            urls_to_check = {
+                Subdomain(subdomain["link"]): 0 for subdomain in urls_to_check}
 
             queue_links(urls_to_check)
 
@@ -348,19 +409,21 @@ def old_links_daemon() -> None:
             log.log(e)
             raise
 
+
 def start_scraping() -> None:
     log.log("Starting background")
     background_scraper = threading.Thread(target=old_links_daemon, daemon=True)
     background_scraper.start()
 
     log.log("Starting primary scraping")
-    sites_to_scrape = set()
+    sites_to_scrape: dict[Subdomain, int] = dict()
     for site in config.Config.SCRAPING_SITES.value:
         log.log(f"Starting scraping for {site}")
-        sites_to_scrape.add(Subdomain(site))
+        sites_to_scrape[Subdomain(site)] = 0
 
     log.log("Queuing links")
     queue_links(sites_to_scrape)
+
 
 if __name__ == "__main__":
     db.reset_database()
