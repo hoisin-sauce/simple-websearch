@@ -6,3 +6,4 @@ insert link: insertlink.sql
 insert token: inserttoken.sql
 find old links: daemon.sql
 insert page link: insertconnection.sql
+time check link: timecheck.sql

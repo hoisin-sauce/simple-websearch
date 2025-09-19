@@ -69,6 +69,10 @@ class Database:
             query = self.command_queue.get()
             try:
                 return_value = query.function(*query.args, **query.kwargs)
+
+                if config.Config.PRINT_SQL_COMMANDS.value:
+                    log.log(return_value)
+
             except Exception as e:
                 log.log(
                     f"Exception: {e} occured whilst processing "

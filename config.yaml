@@ -3,7 +3,7 @@ other config files:
   - sites.yaml
 days till next page check: 5
 auto reset on db init changes: yes
-print sql commands: no
+print sql commands: yes
 seconds between scraping on same site: 3
 daemon wait time seconds: 600
 threaded server handling: yes

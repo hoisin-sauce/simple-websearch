@@ -226,6 +226,22 @@ def get_robots_handler(domain: str) -> robots.RobotsParser:
         raise
     return rp
 
+def link_recently_checked(link: str) -> bool:
+    subdomain = Subdomain(link)
+    params = [subdomain.domain, subdomain.extension]
+    check = db.execute(config.Config.TIME_CHECK_LINK.value, params=params,
+        is_file=True)
+
+    if not check:
+        return False
+
+    log.log(f"{link} was in check")
+
+    if check[0]["checked_recently"]:
+        return True
+
+    return False
+
 
 def site_handler(domain) -> None:
     """
@@ -244,13 +260,17 @@ def site_handler(domain) -> None:
 
     # Initial check to check if scraping of domain is allowed
     # By local rules
-    assert site_is_allowed(domain), f"{domain} is not allowed by config"
+    if not site_is_allowed(domain):
+        log.log(f"{domain} is not allowed by config")
+        return
 
     log.log(f"handler launched for {domain}")
 
     # Get the
     local_queue = queues.get_queue(domain)
     rp = get_robots_handler(domain)
+
+    checked = set()
 
     while True:
         try:
@@ -260,6 +280,18 @@ def site_handler(domain) -> None:
             time.sleep(
                 config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
             continue
+
+
+
+        # link in time range
+        if link_recently_checked(to_handle):
+            log.log(f"handler {domain} already checked link {to_handle}")
+            continue
+
+        if to_handle in checked:
+            log.log(f"{to_handle} is already checked check condition is {link_recently_checked(to_handle)}")
+            raise Exception
+        checked.add(to_handle)
 
         print(f"handler {domain} processing {to_handle}")
 
