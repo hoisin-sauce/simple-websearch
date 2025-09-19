@@ -227,6 +227,9 @@ def get_robots_handler(domain: str) -> robots.RobotsParser:
     return rp
 
 def link_recently_checked(link: str) -> bool:
+    if config.Config.ALLOW_DUPLICATES_DESPITE_TIMING.value:
+        return False
+
     subdomain = Subdomain(link)
     params = [subdomain.domain, subdomain.extension]
     check = db.execute(config.Config.TIME_CHECK_LINK.value, params=params,
@@ -288,9 +291,6 @@ def site_handler(domain) -> None:
             log.log(f"handler {domain} already checked link {to_handle}")
             continue
 
-        if to_handle in checked:
-            log.log(f"{to_handle} is already checked check condition is {link_recently_checked(to_handle)}")
-            raise Exception
         checked.add(to_handle)
 
         print(f"handler {domain} processing {to_handle}")
