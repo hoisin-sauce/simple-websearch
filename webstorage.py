@@ -42,7 +42,6 @@ class Database:
             self.command_queue = queue.Queue()
             self.command_thread = threading.Thread(
                 target=self.handle_queries, daemon=True)
-            self.command_thread.name = f"{database}-thread"
             self.command_thread.start()
         else:
             self.conn = sqlite3.connect(database)

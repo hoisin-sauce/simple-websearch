@@ -1,21 +1,38 @@
 import queue
-import sys, threading
+import sys
+import threading
 import atexit
+import time
 from types import FrameType
 
 class ProfilerHandler:
     def __init__(self, filename="trace.log", separator="-",
-                 only_relative_files=False, ignore_internal_methods=False):
+                 only_relative_files=False, ignore_internal_methods=False,
+                 auto_log_time: int | float | None = None):
         self.profiles : dict[str, queue.Queue[str]] = dict()
         self.indents : dict[str, int] = dict()
-        self.filename : str = filename
+        self.filename : list[str] = filename.split(".")
         self.separator : str = separator
         self.only_relative_files : bool = only_relative_files
-        self._written : bool = False
         self.ignore_internal_methods : bool = ignore_internal_methods
+        self.log_count : int = 0
+        self.auto_log_time : int | float | None = auto_log_time
+
+        # Setup autologging
+        if auto_log_time is not None:
+            threading.Thread(target=self._auto_log).start()
+
+        # Setup profiling
         threading.setprofile(self.profiler)
         sys.setprofile(self.profiler)
+
+        # Register logging on program close
         atexit.register(self.log_profiles)
+
+    def _auto_log(self):
+        while True:
+            time.sleep(self.auto_log_time)
+            self.log_profiles()
 
     def get_profile(self):
         profile_name = threading.current_thread().name
@@ -37,9 +54,9 @@ class ProfilerHandler:
         self.indents[profile_name] = value
 
     def log_profiles(self):
-        if self._written:
-            return
-        with open(self.filename, "w", encoding="utf-8") as f:
+        with open(
+                f"{self.filename[0]}_{self.log_count}.{self.filename[1]}",
+                "w", encoding="utf-8") as f:
             for profile in self.profiles.keys():
                 f.write("=" * 40 + "\n\n")
                 f.write(profile + "\n\n")
@@ -48,7 +65,7 @@ class ProfilerHandler:
                 data = list(traced.queue)
                 for line in data:
                     f.write(line + "\n")
-        self._written = True
+        self.log_count += 1
 
 
     def log(self, message: str):

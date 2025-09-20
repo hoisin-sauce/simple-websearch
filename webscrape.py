@@ -1,3 +1,5 @@
+import log
+
 import datetime
 import sqlite3
 from typing import Generator, Any
@@ -14,7 +16,6 @@ import nltk
 import time
 from nltk.corpus import stopwords
 from nltk import PorterStemmer
-import log
 import inspect
 
 # TODO refactor into multiple files
@@ -535,7 +536,7 @@ def pagerank_daemon() -> None:
 
         # If last database update was done by this function iterate passes
         # to check if links are being updated
-        if time.time() - db.last_change >= config.Config.DAYS_TILL_NEXT_PAGE_CHECK.value + end - start:
+        if time.time() - db.last_change >= config.Config.PAGE_RANK_INTERVAL_SECONDS.value + end - start:
             passes_since_last_update += 1
         else:
             passes_since_last_update = 0
