@@ -4,6 +4,9 @@ import datetime
 import sqlite3
 from typing import Generator, Any
 import webstorage
+
+webstorage.threading.setprofile(log.profiler.profiler)
+
 import queue
 import threading
 import requests
@@ -480,7 +483,7 @@ def pagerank() -> None:
                                is_file=True, params=params)
 
         log.log(f"backlinks: {backlinks}")
-
+        log.profiler.log(f"subdomain: {subdomain}")
         new_rank = calculate_new_pagerank(backlinks)
 
         params = [subdomain.domain, subdomain.extension, new_rank]
@@ -536,14 +539,13 @@ def pagerank_daemon() -> None:
 
         # If last database update was done by this function iterate passes
         # to check if links are being updated
-        if time.time() - db.last_change >= config.Config.PAGE_RANK_INTERVAL_SECONDS.value + end - start:
+        if time.time() - db.last_change + 1 >= config.Config.PAGE_RANK_INTERVAL_SECONDS.value + end - start:
             passes_since_last_update += 1
         else:
             passes_since_last_update = 0
 
     if config.Config.ENABLE_LOGGING_PROFILER:
-        log.log(f"Saving data")
-        log.profiler.log_profiles()
+        log.log(f"pagerank daemon terminated")
 
 
 def start_pagerank() -> None:

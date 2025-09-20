@@ -10,6 +10,8 @@ import hashlib
 import log
 import queue
 
+# TODO rewrite SQLite to use named parameters
+
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
@@ -170,6 +172,32 @@ class Database:
             config.Config.HASH_INSERT.value,
             params=(self.get_hash(),), is_file=True
         )
+
+    def execute_many(self,
+            script: str,
+            params: Iterable[Iterable[str]] |
+                    Iterable[dict[str, str]] |
+                    None = None) -> list[dict[str, Any]]:
+        if config.Config.THREADED_SERVER_HANDLING.value:
+            if threading.current_thread() != self.command_thread:
+                query = Query(self.execute, script,
+                              params=params)
+                self.command_queue.put(query)
+                return query.get_result()
+
+        with open(script, 'r') as f:
+            sql_script = f.read()
+
+        if params is None:
+            params = ()
+
+        cursor = self.conn.cursor()
+        cursor.executemany(sql_script, params)
+        return_value = cursor.fetchall()
+        self.last_change = time.time()
+        self.conn.commit()
+        return return_value
+
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.conn.close()

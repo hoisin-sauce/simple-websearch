@@ -17,6 +17,13 @@ class ProfilerHandler:
         self.ignore_internal_methods : bool = ignore_internal_methods
         self.log_count : int = 0
         self.auto_log_time : int | float | None = auto_log_time
+        self.init_time : float = time.time()
+
+        self.local_files : list[str] = list()
+
+        if only_relative_files:
+            import glob
+            self.local_files = list(i[:-3] for i in glob.glob("*.py"))
 
         # Setup autologging
         if auto_log_time is not None:
@@ -62,9 +69,8 @@ class ProfilerHandler:
                 f.write(profile + "\n\n")
                 f.write("=" * 40 + "\n")
                 traced = self.profiles[profile]
-                data = list(traced.queue)
-                for line in data:
-                    f.write(line + "\n")
+                while not traced.empty():
+                    f.write(traced.get() + "\n")
         self.log_count += 1
 
 
@@ -74,8 +80,9 @@ class ProfilerHandler:
 
     def profiler(self, frame: FrameType, event, arg):
         if self.only_relative_files:
-            if '__main__' not in frame.f_globals.get('__name__'):
-                return
+            if '__main__' not in (name := frame.f_globals.get('__name__')):
+                if name not in self.local_files:
+                    return
         if self.ignore_internal_methods:
             if frame.f_code.co_name[:2] == "__":
                 return
@@ -89,6 +96,7 @@ class ProfilerHandler:
                 self.log(f"File: {frame.f_code.co_filename}")
                 self.log(f"Relative File: {frame.f_globals.get('__name__')}")
                 self.log(f"lineno: {frame.f_code.co_firstlineno}")
+                self.log(f"time called: {time.time() - self.init_time}")
                 self.log(f"Params:")
                 for local_name, value in _locals.items():
                     self.log(f"{local_name}: {value}")
