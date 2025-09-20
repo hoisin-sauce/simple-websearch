@@ -1,6 +1,8 @@
 import sqlite3
 import threading
 import inspect
+import time
+
 import config
 from typing import Callable, Iterable, Any
 import os
@@ -29,6 +31,7 @@ class Database:
     def __init__(self, database: str, init_script: str) -> None:
         self.init_script = init_script
         self.database = database
+        self.last_change = time.time()
 
         # allow connection to be NoneType for initialisation within the daemon
         self.conn : sqlite3.Connection | None = None
@@ -74,13 +77,14 @@ class Database:
                 if config.Config.PRINT_SQL_COMMANDS.value:
                     log.log(return_value)
 
+                query.result.put(return_value)
+
             except Exception as e:
                 log.log(
                     f"Exception: {e} occured whilst processing "
                     f"{query.logging_stack[0]} with args "
                     f"{query.args} and kwargs {query.kwargs}")
                 raise
-            query.result.put(return_value)
 
     def get_hash(self) -> str:
         with open(self.init_script, 'rb') as f:
@@ -132,6 +136,8 @@ class Database:
             log.log(sql_script)
             raise
 
+        self.last_change = time.time()
+
         self.conn.commit()
 
     def execute(self, script: str,
@@ -154,6 +160,7 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute(sql_script, params)
         return_value = cursor.fetchall()
+        self.last_change = time.time()
         self.conn.commit()
         return return_value
 

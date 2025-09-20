@@ -480,12 +480,7 @@ def pagerank() -> None:
 
         log.log(f"backlinks: {backlinks}")
 
-        new_rank = 0
-        for backlink in backlinks:
-            if backlink['origin_pagerank'] is None:
-                backlink['origin_pagerank'] = config.Config.DEFAULT_PAGE_RANK.value
-
-            new_rank += backlink['occurrences'] * backlink['origin_pagerank'] / backlink['forward_links']
+        new_rank = calculate_new_pagerank(backlinks)
 
         params = [subdomain.domain, subdomain.extension, new_rank]
 
@@ -494,9 +489,23 @@ def pagerank() -> None:
 
     db.execute(config.Config.MIGRATE_SUBDOMAIN_RANKS.value, is_file=True)
 
+def calculate_new_pagerank(backlinks: list[dict[str, Any]]) -> float:
+    new_rank = 0.
+    for backlink in backlinks:
+        if backlink['origin_pagerank'] is None:
+            backlink['origin_pagerank'] = config.Config.DEFAULT_PAGE_RANK.value
+
+        new_rank += backlink['occurrences'] * backlink['origin_pagerank'] / \
+                    backlink['forward_links']
+    return new_rank
+
 # TODO reframe multiple inserts into executemany for increased speed
 
 def subdomain_generator() -> Generator[Subdomain, None, None]:
+    """
+    Returns generator which yields subdomains to prevent entire table from being loaded into memory
+    :return: Subdomain generator
+    """
     params = [config.Config.PAGE_RANK_MEMORY_ROWS.value, 0]
     while subdomains := db.execute(config.Config.GET_SUBDOMAINS.value,
             params=params, is_file=True):
@@ -508,14 +517,32 @@ def subdomain_generator() -> Generator[Subdomain, None, None]:
 # TODO make a method of storing all links that need to be processed when the program is terminated
 
 def pagerank_daemon() -> None:
+    """
+    Daemon thread responsible for repeatedly running pagerank algorithm
+    :return:
+    """
     log.log("Starting pagerank daemon")
-    while True:
+
+    # Check if enough idle cycles have occurred to finish iterations
+    passes_since_last_update = 0
+    while passes_since_last_update != config.Config.PAGE_RANK_ITERS_AFTER_LAST_CHANGE.value:
         log.log(f"pagerank starting")
         start = time.time()
         pagerank()
         end = time.time()
         log.log(f"pagerank finished in {end - start} seconds")
         time.sleep(config.Config.PAGE_RANK_INTERVAL_SECONDS.value)
+
+        # If last database update was done by this function iterate passes
+        # to check if links are being updated
+        if time.time() - db.last_change >= config.Config.DAYS_TILL_NEXT_PAGE_CHECK.value + end - start:
+            passes_since_last_update += 1
+        else:
+            passes_since_last_update = 0
+
+    if config.Config.ENABLE_LOGGING_PROFILER:
+        log.log(f"Saving data")
+        log.profiler.log_profiles()
 
 
 def start_pagerank() -> None:

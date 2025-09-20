@@ -1,12 +1,17 @@
+# for automatic init script updates
 hash script: autohash.sql
 hash insert: inserthash.sql
 hash check: checkhash.sql
+
+# crawler
 get link: getlink.sql
 insert link: insertlink.sql
 insert token: inserttoken.sql
 find old links: daemon.sql
 insert page link: insertconnection.sql
 time check link: timecheck.sql
+
+# pagerank
 get backlinks pagerank: getbacklinks.sql
 get subdomains: getsubdomains.sql
 set temporary subdomain rank:  setrank.sql

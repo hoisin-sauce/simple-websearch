@@ -9,3 +9,6 @@ __pycache__/
 # Sqlite
 *.db
 *.db-journal
+
+# Logging
+*.log
