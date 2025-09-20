@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS Website;
 DROP TABLE IF EXISTS Subdomain;
 DROP TABLE IF EXISTS SubdomainSubdomainLink;
 DROP TABLE IF EXISTS TokenSubdomainLink;
+DROP TABLE IF EXISTS TemporarySubdomainRank;
 
 VACUUM;
 
@@ -19,7 +20,16 @@ CREATE TABLE Subdomain(
     extension TEXT NOT NULL,
     url TEXT NOT NULL,
     checked DATETIME DEFAULT CURRENT_TIMESTAMP,
+    pagerank REAL,
     FOREIGN KEY (url) REFERENCES Website(url)
+    PRIMARY KEY (url, extension)
+);
+
+CREATE TABLE TemporarySubdomainRank(
+    extension TEXT NOT NULL,
+    url TEXT NOT NULL,
+    pagerank REAL NOT NULL,
+    FOREIGN KEY (url, extension) REFERENCES Subdomain (url, extension)
     PRIMARY KEY (url, extension)
 );
 

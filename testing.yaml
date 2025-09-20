@@ -1,4 +1,4 @@
 production: no
 auto reset on db init changes: yes
-print sql commands: yes
+print sql commands: no
 allow duplicates despite timing: no

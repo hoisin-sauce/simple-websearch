@@ -1,4 +1,6 @@
 import datetime
+import sqlite3
+from typing import Generator, Any
 import webstorage
 import queue
 import threading
@@ -15,6 +17,8 @@ from nltk import PorterStemmer
 import log
 import inspect
 
+# TODO refactor into multiple files
+# TODO implement capping on request rates
 # TODO change from assertion to simple log and return for disallowed websites
 
 class ThreadManager:
@@ -75,6 +79,10 @@ class Subdomain:
         self.domain = o.netloc if o.netloc else parent_url
         self.o = o._replace(netloc=self.domain)._replace(scheme="https")
         self.extension = o._replace(netloc="")._replace(scheme="").geturl()
+        if not self.extension:
+            return
+        if self.extension[0] == "/":
+            self.extension = self.extension[1:]
 
     def get_url(self):
         return self.o.geturl()
@@ -293,14 +301,14 @@ def site_handler(domain) -> None:
 
         checked.add(to_handle)
 
-        print(f"handler {domain} processing {to_handle}")
+        log.log(f"handler {domain} processing {to_handle}")
 
         try:
             links, tokens = process_url(to_handle, rp=rp)
-            print(f"fetched links: {links}")
+            log.log(f"fetched links: {links}")
         except AssertionError:
             # TODO log assertion issue
-            print(f"failed to fetch links: {to_handle}")
+            log.log(f"failed to fetch links: {to_handle}")
             continue
 
         insert_link(Subdomain(to_handle))
@@ -333,7 +341,6 @@ def update_links(origin: Subdomain, targets: dict[Subdomain, int]) -> None:
                 f"Error occured while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
             raise
 
-        print(connection)
         db.execute_script(config.Config.INSERT_PAGE_LINK.value, params=connection)
 
 
@@ -457,7 +464,65 @@ def start_scraping() -> None:
     queue_links(sites_to_scrape)
 
 
+def pagerank() -> None:
+    """
+    Update database with values calculated from pagerank algorithm
+    Using template from https://anvil.works/blog/search-engine-pagerank
+    # TODO migrate this to something involving/based on the matrix implementation
+    :return:
+    """
+    for subdomain in subdomain_generator():
+        # get all links to subdomain
+        params = [subdomain.domain, subdomain.extension,
+                  subdomain.domain, subdomain.extension]
+        backlinks = db.execute(config.Config.GET_BACKLINKS_PAGERANK.value,
+                               is_file=True, params=params)
+
+        log.log(f"backlinks: {backlinks}")
+
+        new_rank = 0
+        for backlink in backlinks:
+            if backlink['origin_pagerank'] is None:
+                backlink['origin_pagerank'] = config.Config.DEFAULT_PAGE_RANK.value
+
+            new_rank += backlink['occurrences'] * backlink['origin_pagerank'] / backlink['forward_links']
+
+        params = [subdomain.domain, subdomain.extension, new_rank]
+
+        db.execute(config.Config.SET_TEMPORARY_SUBDOMAIN_RANK.value,
+            params=params, is_file=True)
+
+    db.execute(config.Config.MIGRATE_SUBDOMAIN_RANKS.value, is_file=True)
+
+# TODO reframe multiple inserts into executemany for increased speed
+
+def subdomain_generator() -> Generator[Subdomain, None, None]:
+    params = [config.Config.PAGE_RANK_MEMORY_ROWS.value, 0]
+    while subdomains := db.execute(config.Config.GET_SUBDOMAINS.value,
+            params=params, is_file=True):
+        for subdomain in subdomains:
+            url = "//" + subdomain["url"] + subdomain["extension"]
+            yield Subdomain(url)
+        params[1] += config.Config.PAGE_RANK_MEMORY_ROWS.value
+
+# TODO make a method of storing all links that need to be processed when the program is terminated
+
+def pagerank_daemon() -> None:
+    log.log("Starting pagerank daemon")
+    while True:
+        log.log(f"pagerank starting")
+        start = time.time()
+        pagerank()
+        end = time.time()
+        log.log(f"pagerank finished in {end - start} seconds")
+        time.sleep(config.Config.PAGE_RANK_INTERVAL_SECONDS.value)
+
+
+def start_pagerank() -> None:
+    threading.Thread(target=pagerank_daemon, daemon=True).start()
+
 if __name__ == "__main__":
     db.reset_database()
     start_scraping()
+    start_pagerank()
     thread_manager.join_threads()

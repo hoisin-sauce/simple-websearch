@@ -54,6 +54,7 @@ class Database:
             self.check_hash()
 
         # TODO automatic click implementation of reset command?
+        # Possibly could be done with an interface hosted to local which queues reset
 
     def database_exists(self) -> bool:
         return os.path.isfile(self.database)
@@ -107,7 +108,7 @@ class Database:
         return wrapper
 
     def execute_script(self, script: str,
-                       params: dict[str, str] | None = None) -> None:
+                       params: dict[str, str] | Iterable[str] |None = None) -> None:
 
         if config.Config.THREADED_SERVER_HANDLING.value:
             if threading.current_thread() != self.command_thread:
