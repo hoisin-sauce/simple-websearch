@@ -1,5 +1,8 @@
 script folder: sqlite scripts
 
+init script: webdbinit.sql
+database name: webscrape.db
+
 # for automatic init script updates
 hash script: autohash.sql
 hash insert: inserthash.sql

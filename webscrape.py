@@ -66,7 +66,9 @@ token_regex_pattern = '|'.join(map(re.escape, string.punctuation))
 stopwords = set(stopwords.words('english'))
 
 # noinspection SpellCheckingInspection
-db = webstorage.Database("webscrape.db", "webdbinit.sql")
+db = webstorage.Database(config.Config.DATABASE_NAME.value,
+                         config.Config.INIT_SCRIPT.value,
+                         script_directory=config.Config.SCRIPT_FOLDER.value,)
 
 thread_manager = ThreadManager()
 
@@ -312,6 +314,7 @@ def site_handler(domain) -> None:
                 log.log(f"handler {domain} expired to idle timeout")
                 break
         except queue.Empty:
+            log.log(f"handler {domain} queue is empty i may have fumbled")
             time.sleep(
                 config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
             continue

@@ -30,9 +30,11 @@ class Query:
         return self.result.get()
 
 class Database:
-    def __init__(self, database: str, init_script: str) -> None:
+    def __init__(self, database: str, init_script: str,
+                 script_directory: str = "") -> None:
         self.init_script = init_script
         self.database = database
+        self.script_directory = script_directory + os.path.sep
         self.last_change = time.time()
 
         # allow connection to be NoneType for initialisation within the daemon
@@ -88,7 +90,7 @@ class Database:
                 raise
 
     def get_hash(self) -> str:
-        with open(self.init_script, 'rb') as f:
+        with open(self.script_directory + self.init_script, 'rb') as f:
             sql_script = f.read()
         sql_hash = hashlib.sha256(sql_script).hexdigest()
         return sql_hash
@@ -122,7 +124,7 @@ class Database:
                 query.get_result()
                 return
 
-        with open(script, 'r') as f:
+        with open(self.script_directory + script, 'r') as f:
             sql_script = f.read()
 
         # This is unsafe however I am lazy
@@ -154,7 +156,7 @@ class Database:
         if params is None:
             params = ()
         if is_file:
-            with open(script, 'r') as f:
+            with open(self.script_directory + script, 'r') as f:
                 sql_script = f.read()
         else:
             sql_script = script
@@ -185,7 +187,7 @@ class Database:
                 self.command_queue.put(query)
                 return query.get_result()
 
-        with open(script, 'r') as f:
+        with open(self.script_directory + script, 'r') as f:
             sql_script = f.read()
 
         if params is None:
