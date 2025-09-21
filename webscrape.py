@@ -1,14 +1,7 @@
-from yaml import tokens
-
 import log
-
 import datetime
-import sqlite3
-from typing import Generator, Any
+from typing import Generator, Any, Tuple
 import webstorage
-
-webstorage.threading.setprofile(log.profiler.profiler)
-
 import queue
 import threading
 import requests
@@ -27,6 +20,7 @@ import string
 # TODO refactor into multiple files
 # TODO implement capping on request rates
 # TODO change from assertion to simple log and return for disallowed websites
+# TODO restructure database to use primary key columns rather than pairs to denote links to save space
 
 class ThreadManager:
     def __init__(self):
@@ -315,6 +309,7 @@ def site_handler(domain) -> None:
                 timeout=config.Config.THREADING_TIMEOUT.value,
             )
             if to_handle is None:
+                log.log(f"handler {domain} expired to idle timeout")
                 break
         except queue.Empty:
             time.sleep(
@@ -340,9 +335,17 @@ def site_handler(domain) -> None:
             log.log(f"failed to fetch links: {to_handle}")
             continue
 
+        if config.Config.TRACK_DATABASE_TIMES:
+            start_time = time.time()
+
         insert_link(Subdomain(to_handle))
         update_tokens(to_handle, tokens)
         update_links(Subdomain(to_handle), links)
+
+        if config.Config.TRACK_DATABASE_TIMES:
+            # noinspection PyUnboundLocalVariable
+            elapsed_time = time.time() - start_time
+            log.log(f"Inserting links for {to_handle} took {elapsed_time} seconds")
         queue_links(links)
 
         time.sleep(config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
@@ -374,7 +377,7 @@ def update_links(origin: Subdomain, targets: dict[Subdomain, int]) -> None:
 
             except AttributeError:
                 log.log(
-                    f"Error occured while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
+                    f"Error occurred while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
                 raise
 
             db.execute_script(config.Config.INSERT_PAGE_LINK.value, params=connection)
@@ -393,7 +396,7 @@ def link_generator(origin: Subdomain, targets: dict[Subdomain, int]) -> Generato
 
         except AttributeError:
             log.log(
-                f"Error occured while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
+                f"Error occurred while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
             raise
 
         yield connection
@@ -401,12 +404,34 @@ def link_generator(origin: Subdomain, targets: dict[Subdomain, int]) -> Generato
 
 def update_tokens(url: str, tokens: dict[str, int]) -> None:
     # TODO clear tokens before links are properly checked
+    if config.Config.EXECUTE_MANY:
+        token_names = token_name_generator(tokens)
+        db.execute_many(config.Config.ENSURE_TOKEN_EXISTS.value,
+            params=token_names)
+
+        token_gen = token_generator(url, tokens)
+        db.execute_many(config.Config.INSERT_MANY_TOKEN.value,
+            params=token_gen)
+    else:
+        site = Subdomain(url)
+        params = {"extension": site.extension, "url": site.domain}
+        for token, count in tokens.items():
+            params["token"] = token
+            params["occurrences"] = count
+            db.execute_script(config.Config.INSERT_TOKEN.value, params=params)
+
+def token_generator(url: str, tokens: dict[str, int]) -> Generator[dict[str, Any], None, None]:
     site = Subdomain(url)
     params = {"extension": site.extension, "url": site.domain}
     for token, count in tokens.items():
         params["token"] = token
         params["occurrences"] = count
-        db.execute_script(config.Config.INSERT_TOKEN.value, params=params)
+        yield params
+
+
+def token_name_generator(tokens: dict[str, int]) -> Generator[Tuple[str], None, None]:
+    for token in tokens.keys():
+        yield (token,)
 
 
 def link_needs_checking(link: Subdomain) -> bool:
@@ -447,6 +472,8 @@ def insert_link(link: Subdomain) -> None:
 
     db.execute_script(config.Config.INSERT_LINK.value,
                       params=params)
+
+# TODO sitemap parsing
 
 
 def queue_links(links: dict[Subdomain, int]) -> None:
@@ -553,7 +580,7 @@ def calculate_new_pagerank(backlinks: list[dict[str, Any]],
     new_rank = 0
     for backlink in backlinks:
         if backlink['origin_pagerank'] is None:
-            backlink['origin_pagerank'] = config.Config.DEFAULT_PAGE_RANK.value
+            backlink['origin_pagerank'] = 1/subdomain_count
 
         new_rank += (backlink['occurrences'] * backlink['origin_pagerank']
             / backlink['forward_links'])
@@ -606,8 +633,8 @@ def pagerank_daemon() -> None:
 
     if config.Config.PAGE_RANK_FINAL_CYCLES:
         log.log(f"pagerank starting final cycles")
-        for _ in range(config.Config.PAGE_RANK_FINAL_CYCLES.value):
-            log.log(f"pagerank starting")
+        for i in range(config.Config.PAGE_RANK_FINAL_CYCLES.value):
+            log.log(f"pagerank starting - post loop iteration: {i}")
             start = time.time()
             pagerank()
             end = time.time()

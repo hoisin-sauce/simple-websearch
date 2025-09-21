@@ -1,3 +1,4 @@
+import os.path
 import queue
 import sys
 import threading
@@ -8,7 +9,8 @@ from types import FrameType
 class ProfilerHandler:
     def __init__(self, filename="trace.log", separator="-",
                  only_relative_files=False, ignore_internal_methods=False,
-                 auto_log_time: int | float | None = None):
+                 auto_log_time: int | float | None = None,
+                 ignored_names: list[str] | None = None,):
         self.profiles : dict[str, queue.Queue[str]] = dict()
         self.indents : dict[str, int] = dict()
         self.filename : list[str] = filename.split(".")
@@ -17,6 +19,7 @@ class ProfilerHandler:
         self.ignore_internal_methods : bool = ignore_internal_methods
         self.log_count : int = 0
         self.auto_log_time : int | float | None = auto_log_time
+        self.ignored_names : list[str] | None = ignored_names
         self.init_time : float = time.time()
 
         self.local_files : list[str] = list()
@@ -24,6 +27,10 @@ class ProfilerHandler:
         if only_relative_files:
             import glob
             self.local_files = list(i[:-3] for i in glob.glob("*.py"))
+
+        if not (folder := os.path.dirname(filename)) in os.listdir():
+            for i, folder_name in enumerate(folder.split(os.path.sep)):
+                os.mkdir(folder_name + os.path.sep.join(folder.split(os.path.sep)[:i]))
 
         # Setup autologging
         if auto_log_time is not None:
@@ -99,6 +106,8 @@ class ProfilerHandler:
                 self.log(f"time called: {time.time() - self.init_time}")
                 self.log(f"Params:")
                 for local_name, value in _locals.items():
+                    if local_name in self.ignored_names:
+                        continue
                     self.log(f"{local_name}: {value}")
                 self.indent += 1
             case 'return':
@@ -111,6 +120,25 @@ class ProfilerHandler:
             case 'c_return':
                 pass
             case 'c_exception':
+                self.log("-----")
+                self.log("Exception")
+                self.log(f"Function {frame.f_code.co_qualname}")
+                self.log(f"File: {frame.f_code.co_filename}")
+                self.log(f"Relative File: {frame.f_globals.get('__name__')}")
+                self.log(f"lineno: {frame.f_code.co_firstlineno}")
+                self.log(f"time called: {time.time() - self.init_time}")
+                self.log("Locals at time of exception")
+                _locals = dict(**frame.f_locals)
+                if frame.f_code.co_name == '__init__':
+                    del _locals['self']
+                for local_name, value in _locals.items():
+                    if local_name in self.ignored_names:
+                        continue
+                    try:
+                        self.log(f"{local_name}: {value}")
+                    except AttributeError:
+                        pass
+                self.log("-----")
                 self.log_profiles()
 
 if __name__ == '__main__':

@@ -47,3 +47,5 @@ if "OTHER_CONFIG_FILES" in config:
         process_file(file)
 
 Config = Enum('Config', config)
+
+# TODO refactor additional resources into separate files

@@ -1,3 +1,5 @@
+script folder: sqlite scripts
+
 # for automatic init script updates
 hash script: autohash.sql
 hash insert: inserthash.sql
@@ -11,6 +13,8 @@ find old links: daemon.sql
 insert page link: insertconnection.sql
 time check link: timecheck.sql
 insert many page link: insertmanyconnection.sql
+insert many token: insertmanytoken.sql
+ensure token exists: ensuretoken.sql
 
 # pagerank
 get backlinks pagerank: getbacklinks.sql
