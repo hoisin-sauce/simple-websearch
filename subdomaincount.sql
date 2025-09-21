@@ -1,0 +1,1 @@
+SELECT Count(*) AS subdomain_count FROM Subdomain LIMIT 1

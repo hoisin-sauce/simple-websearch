@@ -1,3 +1,5 @@
+from yaml import tokens
+
 import log
 
 import datetime
@@ -20,6 +22,7 @@ import time
 from nltk.corpus import stopwords
 from nltk import PorterStemmer
 import inspect
+import string
 
 # TODO refactor into multiple files
 # TODO implement capping on request rates
@@ -64,6 +67,7 @@ stemmer = PorterStemmer()
 
 nltk.download('stopwords')
 nltk.download('punkt')
+token_regex_pattern = '|'.join(map(re.escape, string.punctuation))
 
 stopwords = set(stopwords.words('english'))
 
@@ -84,9 +88,10 @@ class Subdomain:
         self.o = o._replace(netloc=self.domain)._replace(scheme="https")
         self.extension = o._replace(netloc="")._replace(scheme="").geturl()
         if not self.extension:
+            self.extension = "/"
             return
-        if self.extension[0] == "/":
-            self.extension = self.extension[1:]
+        if self.extension[0] != "/":
+            self.extension = "/" + self.extension
 
     def get_url(self):
         return self.o.geturl()
@@ -109,6 +114,10 @@ def get_page_soup(url: str) -> BeautifulSoup:
     """
     page = requests.get(url)
     soup = BeautifulSoup(page.content, 'html.parser')
+    for script in soup.find_all('script'):
+        script.decompose()
+    for style in soup.find_all('style'):
+        style.decompose()
     return soup
 
 
@@ -132,16 +141,28 @@ def get_links(soup: BeautifulSoup,
     return links
 
 
-def get_tokens(soup: BeautifulSoup) -> dict:
+def get_tokens_from_soup(soup: BeautifulSoup) -> dict[str, int]:
     """
     Extracts tokens from a BeautifulSoup object
     :param soup: BeautifulSoup object
     :return: dict of tokens and their counts
     """
-    # TODO tokenise in groups to allow for advanced searching
     text = soup.get_text()
+
+    token_dict = get_tokens(text)
+
+    return token_dict
+
+def get_tokens(text: str) -> dict[str, int]:
     tokens = re.split(r'\W+', text)
     token_dict = {}
+
+    additional_tokens: list[str] = []
+    for token in tokens:
+        if any(char in string.punctuation for char in token):
+            additional_tokens += re.split(token_regex_pattern, token)
+
+    tokens += additional_tokens
 
     for token in tokens:
         token = token.lower()
@@ -189,7 +210,7 @@ def process_url(link: str,
         f"URL {link} is not allowed by robots.txt"
     soup = get_page_soup(link)
     # TODO write assertion or check for www.robotstxt.org/meta.html meta tags
-    tokens = get_tokens(soup)
+    tokens = get_tokens_from_soup(soup)
     links: dict[Subdomain, int] = get_links(soup, parent_url=domain)
     return links, tokens
 
@@ -290,7 +311,11 @@ def site_handler(domain) -> None:
     while True:
         try:
             log.log(f"handler {domain} fetching")
-            to_handle = local_queue.get()
+            to_handle = local_queue.get(
+                timeout=config.Config.THREADING_TIMEOUT.value,
+            )
+            if to_handle is None:
+                break
         except queue.Empty:
             time.sleep(
                 config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
@@ -329,11 +354,37 @@ def update_links(origin: Subdomain, targets: dict[Subdomain, int]) -> None:
     assert all(isinstance(target, Subdomain) for target in targets), \
         "Targets must be subdomains"
     # TODO clear links on update
+
+    if config.Config.EXECUTE_MANY:
+        links = link_generator(origin, targets)
+
+        db.execute_many(config.Config.INSERT_MANY_PAGE_LINK.value, params=links)
+
+    else:
+        connection = {
+            "origin_url": origin.domain,
+            "origin_extension": origin.extension
+        }
+
+        for target, occurrences in targets.items():
+            try:
+                connection["target_url"] = target.domain
+                connection["target_extension"] = target.extension
+                connection["occurrences"] = occurrences
+
+            except AttributeError:
+                log.log(
+                    f"Error occured while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
+                raise
+
+            db.execute_script(config.Config.INSERT_PAGE_LINK.value, params=connection)
+
+
+def link_generator(origin: Subdomain, targets: dict[Subdomain, int]) -> Generator[dict[str, Any], None, None]:
     connection = {
         "origin_url": origin.domain,
         "origin_extension": origin.extension
     }
-
     for target, occurrences in targets.items():
         try:
             connection["target_url"] = target.domain
@@ -345,7 +396,7 @@ def update_links(origin: Subdomain, targets: dict[Subdomain, int]) -> None:
                 f"Error occured while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
             raise
 
-        db.execute_script(config.Config.INSERT_PAGE_LINK.value, params=connection)
+        yield connection
 
 
 def update_tokens(url: str, tokens: dict[str, int]) -> None:
@@ -475,32 +526,41 @@ def pagerank() -> None:
     # TODO migrate this to something involving/based on the matrix implementation
     :return:
     """
+    subdomain_count = db.execute(config.Config.GET_SUBDOMAIN_COUNT.value,
+                                 is_file=True)[0]['subdomain_count']
+
     for subdomain in subdomain_generator():
         # get all links to subdomain
-        params = [subdomain.domain, subdomain.extension,
-                  subdomain.domain, subdomain.extension]
+        params = [subdomain.domain, subdomain.extension]
         backlinks = db.execute(config.Config.GET_BACKLINKS_PAGERANK.value,
                                is_file=True, params=params)
 
-        log.log(f"backlinks: {backlinks}")
-        log.profiler.log(f"subdomain: {subdomain}")
-        new_rank = calculate_new_pagerank(backlinks)
+        new_rank = calculate_new_pagerank(backlinks, subdomain_count=subdomain_count)
 
         params = [subdomain.domain, subdomain.extension, new_rank]
-
         db.execute(config.Config.SET_TEMPORARY_SUBDOMAIN_RANK.value,
             params=params, is_file=True)
 
     db.execute(config.Config.MIGRATE_SUBDOMAIN_RANKS.value, is_file=True)
 
-def calculate_new_pagerank(backlinks: list[dict[str, Any]]) -> float:
-    new_rank = 0.
+    if config.Config.LOG_TOTAL_PAGERANK.value:
+        total_rank = db.execute(
+            config.Config.GET_TOTAL_RANK.value, is_file=True)[0]['total_rank']
+        log.log(f"Total rank: {total_rank}")
+
+def calculate_new_pagerank(backlinks: list[dict[str, Any]],
+                           subdomain_count : int = 1) -> float:
+    new_rank = 0
     for backlink in backlinks:
         if backlink['origin_pagerank'] is None:
             backlink['origin_pagerank'] = config.Config.DEFAULT_PAGE_RANK.value
 
-        new_rank += backlink['occurrences'] * backlink['origin_pagerank'] / \
-                    backlink['forward_links']
+        new_rank += (backlink['occurrences'] * backlink['origin_pagerank']
+            / backlink['forward_links'])
+
+    new_rank *= config.Config.PAGE_RANK_MULTIPLIER.value
+
+    new_rank += (1 - config.Config.PAGE_RANK_MULTIPLIER.value) / subdomain_count
     return new_rank
 
 # TODO reframe multiple inserts into executemany for increased speed
@@ -543,6 +603,15 @@ def pagerank_daemon() -> None:
             passes_since_last_update += 1
         else:
             passes_since_last_update = 0
+
+    if config.Config.PAGE_RANK_FINAL_CYCLES:
+        log.log(f"pagerank starting final cycles")
+        for _ in range(config.Config.PAGE_RANK_FINAL_CYCLES.value):
+            log.log(f"pagerank starting")
+            start = time.time()
+            pagerank()
+            end = time.time()
+            log.log(f"pagerank finished in {end - start} seconds")
 
     if config.Config.ENABLE_LOGGING_PROFILER:
         log.log(f"pagerank daemon terminated")

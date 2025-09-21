@@ -7,11 +7,11 @@ SELECT
     FROM
         Subdomain
     WHERE
-        url=?
+        url=SSL.origin_url
     AND
-        extension=?) AS origin_pagerank,
+        extension=SSL.origin_extension) AS origin_pagerank,
     (SELECT
-        Count(*)
+        SUM(occurrences)
     FROM
         SubdomainSubdomainLink
     WHERE

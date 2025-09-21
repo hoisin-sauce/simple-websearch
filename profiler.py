@@ -27,7 +27,7 @@ class ProfilerHandler:
 
         # Setup autologging
         if auto_log_time is not None:
-            threading.Thread(target=self._auto_log).start()
+            threading.Thread(target=self._auto_log, daemon=True).start()
 
         # Setup profiling
         threading.setprofile(self.profiler)
@@ -111,7 +111,7 @@ class ProfilerHandler:
             case 'c_return':
                 pass
             case 'c_exception':
-                pass
+                self.log_profiles()
 
 if __name__ == '__main__':
     def func(arg, kwarg=None) -> tuple[int, str]:
@@ -171,3 +171,4 @@ if __name__ == '__main__':
     logi = ProfilerHandler(only_relative_files=True)
     func(1,kwarg=2)
     a(2)
+

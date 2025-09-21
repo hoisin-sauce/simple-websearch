@@ -4,9 +4,13 @@ production: no
 auto reset on db init changes: yes
 print sql commands: no
 allow duplicates despite timing: no
+execute many: yes # should be yes by default only set to no for testing
 
 # logging
 enable logging profiler: yes
 only log relative calls: yes
 ignore internal calls: yes
 logging interval: 60
+
+# pagerank
+log total pagerank: yes

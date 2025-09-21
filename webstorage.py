@@ -180,7 +180,7 @@ class Database:
                     None = None) -> list[dict[str, Any]]:
         if config.Config.THREADED_SERVER_HANDLING.value:
             if threading.current_thread() != self.command_thread:
-                query = Query(self.execute, script,
+                query = Query(self.execute_many, script,
                               params=params)
                 self.command_queue.put(query)
                 return query.get_result()

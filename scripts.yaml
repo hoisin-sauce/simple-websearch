@@ -10,9 +10,12 @@ insert token: inserttoken.sql
 find old links: daemon.sql
 insert page link: insertconnection.sql
 time check link: timecheck.sql
+insert many page link: insertmanyconnection.sql
 
 # pagerank
 get backlinks pagerank: getbacklinks.sql
 get subdomains: getsubdomains.sql
 set temporary subdomain rank:  setrank.sql
 migrate subdomain ranks: migraterank.sql
+get subdomain count: subdomaincount.sql
+get total rank: totalrank.sql

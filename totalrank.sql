@@ -1,0 +1,1 @@
+SELECT Sum(pagerank) AS total_rank FROM Subdomain LIMIT 1
