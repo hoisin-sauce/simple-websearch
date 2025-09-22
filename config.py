@@ -1,6 +1,6 @@
 from enum import Enum
 import builtins
-
+import os
 import yaml
 
 try:
@@ -28,6 +28,8 @@ def process_file(name: str = "config.yaml") -> None:
     :return:
     """
     global config
+    if "OTHER_CONFIG_DIRECTORY" in config:
+        name = config["OTHER_CONFIG_DIRECTORY"] + os.sep + name
     stream = open(name, 'r')
     dictionary = yaml.load(stream, Loader)
     for key, value in dictionary.items():

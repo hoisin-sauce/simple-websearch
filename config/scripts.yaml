@@ -1,4 +1,5 @@
 script folder: sqlite scripts
+database folder: db
 
 init script: webdbinit.sql
 database name: webscrape.db
