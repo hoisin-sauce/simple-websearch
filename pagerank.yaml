@@ -1,7 +1,7 @@
 page rank interval seconds: 10
 page rank memory rows: 20
 page rank iters after last change: 3 # set to negative value to allow for unlimited cycles
-page rank final cycles: 200
+page rank final cycles: 60
 
 page rank multiplier: 0.85
 page rank strength: 0.2

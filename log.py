@@ -19,7 +19,7 @@ def do_nothing(*args, **kwargs):
 
 # TODO not be lazy and write logging properly
 log = log_with_thread # NOLOG
-log = do_nothing
+# log = do_nothing
 
 # TODO implement thread tracing (maybe in a database?) based on threading.setprofile
 

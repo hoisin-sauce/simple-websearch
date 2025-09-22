@@ -12,7 +12,8 @@ enable logging profiler: yes
 only log relative calls: yes
 ignore internal calls: yes
 logging interval: 60
-track database times: yes
+track database times: no
+track pagerank times: no
 ignore names:
   - tokens
   - targets

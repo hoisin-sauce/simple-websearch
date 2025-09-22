@@ -31,11 +31,12 @@ class Query:
 
 class Database:
     def __init__(self, database: str, init_script: str,
-                 script_directory: str = "") -> None:
+                 script_directory: str = "", connect_function = sqlite3.connect) -> None:
         self.init_script = init_script
         self.database = database
         self.script_directory = script_directory + os.path.sep
         self.last_change = time.time()
+        self.connect_function = connect_function
 
         # allow connection to be NoneType for initialisation within the daemon
         self.conn : sqlite3.Connection | None = None
@@ -48,8 +49,8 @@ class Database:
                 target=self.handle_queries, daemon=True)
             self.command_thread.start()
         else:
-            self.conn = sqlite3.connect(database)
-            self.conn.row_factory = dict_factory
+            self.set_connection()
+
             if config.Config.PRINT_SQL_COMMANDS.value:
                 self.conn.set_trace_callback(log.log)
 
@@ -65,9 +66,12 @@ class Database:
     def database_exists(self) -> bool:
         return os.path.isfile(self.database)
 
-    def handle_queries(self):
-        self.conn = sqlite3.connect(self.database)
+    def set_connection(self) -> None:
+        self.conn = self.connect_function(self.database)
         self.conn.row_factory = dict_factory
+
+    def handle_queries(self):
+        self.set_connection()
 
         if config.Config.PRINT_SQL_COMMANDS.value:
             self.conn.set_trace_callback(log.log)
@@ -124,8 +128,7 @@ class Database:
                 query.get_result()
                 return
 
-        with open(self.script_directory + script, 'r') as f:
-            sql_script = f.read()
+        sql_script = self.get_script(script)
 
         # This is unsafe however I am lazy
         if params is not None:
@@ -156,8 +159,7 @@ class Database:
         if params is None:
             params = ()
         if is_file:
-            with open(self.script_directory + script, 'r') as f:
-                sql_script = f.read()
+            sql_script = self.get_script(script)
         else:
             sql_script = script
         cursor = self.conn.cursor()
@@ -187,8 +189,7 @@ class Database:
                 self.command_queue.put(query)
                 return query.get_result()
 
-        with open(self.script_directory + script, 'r') as f:
-            sql_script = f.read()
+        sql_script = self.get_script(script)
 
         if params is None:
             params = ()
