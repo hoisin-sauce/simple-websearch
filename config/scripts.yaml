@@ -19,6 +19,8 @@ time check link: timecheck.sql
 insert many page link: insertmanyconnection.sql
 insert many token: insertmanytoken.sql
 ensure token exists: ensuretoken.sql
+delete old links: remove_old_links.sql
+delete old tokens: remove_old_tokens.sql
 
 # pagerank
 get backlinks pagerank: getbacklinks.sql

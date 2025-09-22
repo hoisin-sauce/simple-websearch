@@ -56,7 +56,6 @@ def calculate_new_pagerank(backlinks: list[dict[str, Any]],
     new_rank += (1 - config.Config.PAGE_RANK_MULTIPLIER.value) / subdomain_count
     return new_rank
 
-# TODO reframe multiple inserts into executemany for increased speed
 
 def subdomain_generator() -> Generator[Subdomain, None, None]:
     """

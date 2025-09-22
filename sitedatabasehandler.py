@@ -1,5 +1,5 @@
 from subdomains import Subdomain
-from typing import Any, Generator
+from typing import Any, Generator, Iterable
 from tokens import TokenContainer
 import datetime
 import webstorage
@@ -11,12 +11,39 @@ class SiteDatabaseHandler:
     def __init__(self, database: webstorage.Database):
         self.db: webstorage.Database = database
 
+    def delete_tokens_not_in(self, origin: Subdomain, tokens: TokenContainer):
+
+        params = [origin.domain, origin.extension] + list(tokens.token_names())
+
+        sql_script = self.db.get_script(config.Config.DELETE_OLD_TOKENS.value)
+
+        format_params = {"new_tokens": ",".join(["?"] * len(tokens))}
+
+        sql_query = sql_script.format(format_params)
+
+        self.db.execute(sql_query, params)
+
+    def delete_links_not_in(self, origin: Subdomain, links: Iterable[Subdomain]) -> None:
+
+        params = [link.domain + link.extension for link in links]
+
+        params = [origin.domain, origin.extension] + params
+
+        format_params = {"new_urls": ",".join(["?"] * len(links))}
+
+        sql_script = self.db.get_script(config.Config.DELETE_OLD_LINKS.value)
+
+        sql_script = sql_script.format(format_params)
+
+        self.db.execute(sql_script, params=params)
+
     def update_links(self, origin: Subdomain, targets: dict[Subdomain, int]) -> None:
         log.log(f"Update links for {origin} links provided are {targets}")
 
         assert all(isinstance(target, Subdomain) for target in targets), \
             "Targets must be subdomains"
-        # TODO clear links on update
+
+        self.delete_links_not_in(origin, targets.keys())
 
         if config.Config.EXECUTE_MANY:
             links = SiteDatabaseHandler.link_generator(origin, targets)
@@ -66,7 +93,8 @@ class SiteDatabaseHandler:
             yield connection
 
     def update_tokens(self, site: Subdomain, page_tokens: TokenContainer) -> None:
-        # TODO clear tokens before links are properly checked
+        self.delete_tokens_not_in(site, page_tokens)
+
         if config.Config.EXECUTE_MANY:
             token_names = page_tokens.token_name_tuples()
             self.db.execute_many(config.Config.ENSURE_TOKEN_EXISTS.value,

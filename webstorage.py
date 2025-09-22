@@ -10,8 +10,6 @@ import hashlib
 import log
 import queue
 
-# TODO rewrite SQLite to use named parameters
-
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
@@ -64,7 +62,6 @@ class Database:
         if config.Config.AUTO_RESET_ON_DB_INIT_CHANGES.value:
             self.check_hash()
 
-        # TODO automatic click implementation of reset command?
         # Possibly could be done with an interface hosted to local which queues reset
 
     def database_exists(self) -> bool:
