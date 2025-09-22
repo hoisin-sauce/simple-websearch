@@ -201,6 +201,11 @@ class Database:
         return return_value
 
 
+    def get_script(self, script: str) -> str:
+        with open(self.script_directory + script, 'r') as f:
+            return f.read()
+
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.conn.close()
 

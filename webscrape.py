@@ -310,16 +310,10 @@ def site_handler(domain) -> None:
             to_handle = local_queue.get(
                 timeout=config.Config.THREADING_TIMEOUT.value,
             )
-            if to_handle is None:
-                log.log(f"handler {domain} expired to idle timeout")
-                break
+
         except queue.Empty:
-            log.log(f"handler {domain} queue is empty i may have fumbled")
-            time.sleep(
-                config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
-            continue
-
-
+            log.log(f"handler {domain} expired to idle timeout")
+            break
 
         # link in time range
         if link_recently_checked(to_handle):
@@ -650,8 +644,64 @@ def pagerank_daemon() -> None:
 def start_pagerank() -> None:
     threading.Thread(target=pagerank_daemon, daemon=True).start()
 
+def search_for(query: str) -> list[str]:
+    query_tokens = get_tokens(query)
+    subdomains = get_subdomains_featuring(query_tokens,
+        config.Config.RESULTS_PER_SEARCH.value)
+    apply_token_rating(subdomains, query_tokens)
+    sorted_subdomains = sorted(subdomains, key=lambda subdomain: subdomain['query_ranking'] , reverse=True)
+    just_subdomains = [subdomain['url'] + subdomain['extension']
+                       for subdomain in sorted_subdomains]
+    return just_subdomains
+
+def get_subdomains_featuring(query_tokens: dict[str, int],
+                             pagerank_cutoff_count: int) -> list[dict[str, Any]]:
+    # possibly expensiv
+    params: list[Any] = list(query_tokens.keys()) # + [pagerank_cutoff_count,]
+
+    sql_query = db.get_script(config.Config.GET_QUERY_SUBDOMAINS.value)
+
+    sql_query = sql_query.format(
+        token_amount = ",".join(["?"] * len(query_tokens)),
+    )
+
+    subdomains = db.execute(sql_query,
+        params=params, is_file=False)
+
+    return subdomains
+
+def apply_token_rating(subdomains: list[dict[str, Any]],
+                       query_tokens: dict[str, int]) -> None:
+    total_tokens = sum(query_tokens.values())
+
+    for i, subdomain in enumerate(subdomains):
+        token_rank = 0
+        tokens = get_subdomain_tokens(subdomain)
+        for token, count in tokens.items():
+            if token not in query_tokens:
+                continue
+            token_rank += count * query_tokens[token]
+        token_rank /= total_tokens
+        subdomains[i]['query_ranking'] = token_rank * (1 + (subdomain['pagerank'] - 1) * config.Config.PAGE_RANK_STRENGTH.value)
+
+def get_subdomain_tokens(subdomain: dict[str, Any]) -> dict[str, int]:
+    params = {
+        "url": subdomain["url"],
+        "extension": subdomain["extension"],
+    }
+
+    token_list = db.execute(config.Config.GET_SUBDOMAIN_TOKENS.value, params=params,
+               is_file=True)
+
+    return {token["token"]: token["occurrences"] for token in token_list}
+
+
+def search_loop():
+    while True:
+        print(search_for(input("Search query: ")))
+
 if __name__ == "__main__":
-    db.reset_database()
+    # db.reset_database()
     start_scraping()
     start_pagerank()
-    thread_manager.join_threads()
+    search_loop()

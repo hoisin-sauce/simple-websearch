@@ -26,3 +26,7 @@ set temporary subdomain rank:  setrank.sql
 migrate subdomain ranks: migraterank.sql
 get subdomain count: subdomaincount.sql
 get total rank: totalrank.sql
+
+# search
+get query subdomains: find_subdomains_with_tokens.sql
+get subdomain tokens: get_subdomain_tokens.sql
