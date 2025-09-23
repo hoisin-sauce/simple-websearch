@@ -123,8 +123,8 @@ class Database:
             if threading.current_thread() != self.command_thread:
                 query = Query(self.execute_script, script, params=params)
                 self.command_queue.put(query)
-                query.get_result()
-                return
+                _ = query.get_result()
+                del query
 
         sql_script = self.get_script(script)
 
@@ -152,7 +152,9 @@ class Database:
                 query = Query(self.execute, script,
                               params=params, is_file=is_file)
                 self.command_queue.put(query)
-                return query.get_result()
+                result = query.get_result()
+                del query
+                return result
 
         if params is None:
             params = ()
@@ -185,7 +187,9 @@ class Database:
                 query = Query(self.execute_many, script,
                               params=params)
                 self.command_queue.put(query)
-                return query.get_result()
+                result = query.get_result()
+                del query
+                return result
 
         sql_script = self.get_script(script)
 

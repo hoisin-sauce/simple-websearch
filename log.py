@@ -1,7 +1,7 @@
 import threading
 import config
 
-if config.Config.ENABLE_LOGGING_PROFILER:
+if config.Config.ENABLE_LOGGING_PROFILER.value:
     import profiler as p
     profiler = p.ProfilerHandler(
         filename=config.Config.LOG_FILE_PATH.value,

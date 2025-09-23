@@ -177,7 +177,9 @@ class RequestManager:
         """
         request: Request = Request(url)
         self.request_queue.put(request)
-        return request.get()
+        result: requests.Response = request.get()
+        del request
+        return result
 
     def handler(self)-> None:
         """
