@@ -18,8 +18,7 @@ class SiteDatabaseHandler:
         sql_script = self.db.get_script(config.Config.DELETE_OLD_TOKENS.value)
 
         format_params = {"new_tokens": ",".join(["?"] * len(tokens))}
-
-        sql_query = sql_script.format(format_params)
+        sql_query = sql_script.format(**format_params)
 
         self.db.execute(sql_query, params)
 
@@ -33,7 +32,7 @@ class SiteDatabaseHandler:
 
         sql_script = self.db.get_script(config.Config.DELETE_OLD_LINKS.value)
 
-        sql_script = sql_script.format(format_params)
+        sql_script = sql_script.format(**format_params)
 
         self.db.execute(sql_script, params=params)
 

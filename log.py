@@ -11,7 +11,16 @@ if config.Config.ENABLE_LOGGING_PROFILER:
         ignored_names=config.Config.IGNORE_NAMES.value,)
 
 def log_with_thread(message):
-    print(f"{threading.current_thread().name}: {message}")
+    if threading.current_thread() == threading.main_thread():
+        print(f"{threading.current_thread().name}: {message}")
+        return
+
+    if threading.current_thread().name.split("(")[1][:-1] in config.Config.ALLOWED_THREADS.value:
+        print(f"{threading.current_thread().name}: {message}")
+        return
+
+    if config.Config.ALLOWED_THREADS.value == "all":
+        print(f"{threading.current_thread().name}: {message}")
 
 def do_nothing(*args, **kwargs):
     del args, kwargs # ignore for reason

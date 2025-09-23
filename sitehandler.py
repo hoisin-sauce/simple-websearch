@@ -1,4 +1,9 @@
+import datetime
 import threading
+import urllib
+import urllib.error
+import requests
+import requestmanager
 import pagehandler
 import threadmanager
 from sitedatabasehandler import SiteDatabaseHandler
@@ -9,6 +14,8 @@ import queue
 import robots
 import time
 import tokens
+import urllib.robotparser as parser
+from typing import Tuple
 
 
 class SiteHandler:
@@ -30,12 +37,32 @@ class SiteHandler:
     def __init__(self, domain: Subdomain,
                  database_handler: SiteDatabaseHandler,
                  command_queue: queue.Queue,
-                 queue_handler: threadmanager.QueueContainer):
+                 queue_handler: threadmanager.QueueContainer,):
         self.db = database_handler
         self.domain = domain
         self.command_queue = command_queue
         self.rp = self.get_robots_handler()
         self.queue_handler = queue_handler
+
+        request_timings = self.get_request_timings()
+        self.request_manager = requestmanager.RequestManager(*request_timings)
+
+    def get_request_timings(self) -> \
+            Tuple[int | None, datetime.timedelta | None]:
+        local_parser = parser.RobotFileParser()
+        local_parser.set_url(
+            self.domain.o._replace(path="/robots.txt").geturl())
+        try:
+            local_parser.read()
+        except urllib.error.URLError:
+            return None, None
+        request_rate = local_parser.request_rate("*")
+
+        if request_rate is None:
+            return None, None
+
+        return (request_rate.requests,
+                datetime.timedelta(seconds=request_rate.seconds))
 
     def start(self):
         threading.Thread(target=self.site_handler).start()
@@ -100,7 +127,7 @@ class SiteHandler:
                 log.log(f"failed to fetch links: {to_handle}")
                 continue
 
-            if config.Config.TRACK_DATABASE_TIMES:
+            if config.Config.TRACK_DATABASE_TIMES.value:
                 start_time = time.time()
 
             # insert necessary data into database
@@ -108,16 +135,13 @@ class SiteHandler:
             self.db.update_tokens(to_handle, page_tokens)
             self.db.update_links(to_handle, links)
 
-            if config.Config.TRACK_DATABASE_TIMES:
+            if config.Config.TRACK_DATABASE_TIMES.value:
                 # noinspection PyUnboundLocalVariable
                 elapsed_time = time.time() - start_time
                 log.log(
                     f"Inserting links for {to_handle} took {elapsed_time} seconds")
 
             self.queue_handler.queue_links(links)
-
-            time.sleep(
-                config.Config.SECONDS_BETWEEN_SCRAPING_ON_SAME_SITE.value)
 
     def process_url(self, link: Subdomain) -> tuple[
         dict[Subdomain, int], tokens.TokenContainer]:
@@ -131,7 +155,9 @@ class SiteHandler:
             f"URL {link} is not allowed by config"
         assert self.can_check(link), \
             f"URL {link} is not allowed by robots.txt"
-        soup = pagehandler.get_page_soup(link)
+
+        response = self.get_page(link)
+        soup = pagehandler.get_page_soup(response)
         # TODO write assertion or check for www.robotstxt.org/meta.html meta tags
         page_tokens = pagehandler.get_tokens_from_soup(soup)
         links: dict[Subdomain, int] = pagehandler.get_links(soup, parent_url=domain)
@@ -145,3 +171,11 @@ class SiteHandler:
         :return:
         """
         return self.rp.can_fetch("*", link.get_url())
+
+    def get_page(self, link: Subdomain) -> requests.Response:
+        """
+        Actually get the page from a link
+        :param link: page to be fetched
+        :return: requests.Response object from page
+        """
+        return self.request_manager.request(link.get_url())

@@ -34,8 +34,6 @@ class QueueContainer:
         return self.queues[queue_name]
 
     def handler_exists(self, handler_name: str):
-        log.log(
-            f"handler {handler_name} checking current handlers are {self.active_handlers}")
         return handler_name in self.active_handlers
 
     def register_handler(self, handler: str):

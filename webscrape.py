@@ -1,3 +1,5 @@
+import datetime
+
 import log
 import threadmanager
 import websearch
@@ -5,13 +7,12 @@ import webstorage
 import threading
 import config
 import time
+import requestmanager
 from subdomains import Subdomain
 import sitedatabasehandler
 import sitehandler
 import pagerank
 
-# TODO implement capping on request rates
-# TODO change from assertion to simple log and return for disallowed websites
 # TODO restructure database to use primary key columns rather than pairs to denote links to save space
 
 db: None | webstorage.Database= None
@@ -63,6 +64,18 @@ if __name__ == "__main__":
     _db = webstorage.Database(config.Config.DATABASE_NAME.value,
                          config.Config.INIT_SCRIPT.value,
                          script_directory=config.Config.SCRIPT_FOLDER.value,)
+
+    requestmanager.RequestManager.set_default_period(
+        datetime.timedelta(
+            seconds=config.Config.SITE_REQUEST_INTERVAL_SECONDS.value),
+        config.Config.SITE_REQUESTS_IN_INTERVAL.value,
+    )
+
+    requestmanager.RequestManager.set_global_period(
+        config.Config.GLOBAL_REQUESTS_IN_INTERVAL.value,
+        datetime.timedelta(
+            seconds=config.Config.GLOBAL_REQUEST_INTERVAL_SECONDS.value),
+    )
 
     set_db(_db)
     db.reset_database()

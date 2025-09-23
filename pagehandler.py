@@ -5,14 +5,14 @@ import tokens
 from subdomains import Subdomain
 
 
-def get_page_soup(url: Subdomain) -> BeautifulSoup:
+def get_page_soup(response: requests.Response) -> BeautifulSoup:
     """
     Extracts a BeautifulSoup object from a url
-    :param url: url of the website to extract from
+    :param response: Response from url
     :return: BeautifulSoup object
     """
-    page = requests.get(url.get_url())
-    soup = BeautifulSoup(page.content, 'html.parser')
+
+    soup = BeautifulSoup(response.content, 'html.parser')
     for script in soup.find_all('script'):
         script.decompose()
     for style in soup.find_all('style'):

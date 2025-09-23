@@ -30,9 +30,6 @@ class Query:
 class Database:
     def __init__(self, database: str, init_script: str,
                  script_directory: str = "", connect_function = sqlite3.connect) -> None:
-        if not (folder := os.path.dirname(config.Config.DATABASE_FOLDER.value)) in os.listdir():
-            for i, folder_name in enumerate(folder.split(os.path.sep)):
-                os.mkdir(folder_name + os.path.sep.join(folder.split(os.path.sep)[:i]))
 
         self.init_script = init_script
         self.database = config.Config.DATABASE_FOLDER.value + os.sep + database
