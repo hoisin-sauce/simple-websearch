@@ -23,6 +23,7 @@ def process_file(name: str = "config.yaml") -> None:
     Process config file and add yaml to global namespace as ENUMs for local usage
     TODO hard code all of this but its kinda neat for dev
     TODO make all of this optionally live update for easier dev without having
+    TODO remove direct references to config from rest of library and instead place them in __init__ methods
     to restart all web scrapers whilst testing
     :param name: File name to be parsed
     :return:

@@ -13,8 +13,6 @@ import sitedatabasehandler
 import sitehandler
 import pagerank
 
-# TODO restructure database to use primary key columns rather than pairs to denote links to save space
-
 db: None | webstorage.Database= None
 db_handler : None | sitedatabasehandler.SiteDatabaseHandler = None
 
@@ -78,9 +76,7 @@ if __name__ == "__main__":
     )
 
     set_db(_db)
-    db.reset_database()
     start_scraping()
     pagerank.set_db(_db)
     pagerank.start_pagerank()
     websearch.set_db(_db)
-    # search_loop()

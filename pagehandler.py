@@ -29,14 +29,18 @@ def get_links(soup: BeautifulSoup,
     from in case only path specified
     :return: list of links in the object
     """
-    links = dict()
+    parent_url = parent_url.lower()
+    links: dict[Subdomain, int] = dict()
     all_links = soup.find_all('a')
     for link in all_links:
-        if (sub := Subdomain(link.get('href'),
-                                parent_url=parent_url)) not in links:
-            links[sub] = 0
-        links[sub] += 1
-    log.log(f"found {len(links)} links making up {links}")
+        sub = Subdomain(link.get('href').lower(),parent_url=parent_url)
+        for o_link in links:
+            if o_link.get_url() == sub.get_url():
+                links[o_link] += 1
+                break
+        else:
+            links[sub] = 1
+    log.log(f"found {len(links)} links making up {links.keys()}")
     return links
 
 

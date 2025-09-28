@@ -40,7 +40,7 @@ class Database:
         # allow connection to be NoneType for initialisation within the daemon
         self.conn : sqlite3.Connection | None = None
 
-        db_exists = self.database_exists()
+        self.db_exists = self.database_exists()
 
         if config.Config.THREADED_SERVER_HANDLING.value:
             self.command_queue = queue.Queue()
@@ -53,11 +53,11 @@ class Database:
             if config.Config.PRINT_SQL_COMMANDS.value:
                 self.conn.set_trace_callback(log.log)
 
-        if not db_exists:
-            self.reset_database()
+            if not self.db_exists:
+                self.reset_database()
 
-        if config.Config.AUTO_RESET_ON_DB_INIT_CHANGES.value:
-            self.check_hash()
+            if config.Config.AUTO_RESET_ON_DB_INIT_CHANGES.value:
+                self.check_hash()
 
         # Possibly could be done with an interface hosted to local which queues reset
 
@@ -70,6 +70,12 @@ class Database:
 
     def handle_queries(self):
         self.set_connection()
+
+        if not self.db_exists:
+            self.reset_database()
+
+        if config.Config.AUTO_RESET_ON_DB_INIT_CHANGES.value:
+            self.check_hash()
 
         if config.Config.PRINT_SQL_COMMANDS.value:
             self.conn.set_trace_callback(log.log)
@@ -125,10 +131,14 @@ class Database:
                 self.command_queue.put(query)
                 _ = query.get_result()
                 del query
+                return
 
         sql_script = self.get_script(script)
 
         # This is unsafe however I am lazy
+        # TODO refactor scripts using {} syntax to : syntax for safe insertion
+        # when this is done we can simply use ,params rather than formatting
+        # the query itself
         if params is not None:
             sql_script = sql_script.format(**params)
 

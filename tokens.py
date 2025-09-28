@@ -66,6 +66,9 @@ class TokenContainer:
     def __len__(self):
         return len(self._token_dict)
 
+    def __iter__(self):
+        yield from self.token_names()
+
 
 def get_tokens(text: str) -> TokenContainer:
     tokens = re.split(r'\W+', text)

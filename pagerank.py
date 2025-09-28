@@ -28,9 +28,13 @@ def pagerank() -> None:
         backlinks = db.execute(config.Config.GET_BACKLINKS_PAGERANK.value,
                                is_file=True, params=params)
 
+        if config.Config.TRACK_PAGERANK_BACKLINKS.value:
+            log.log(f"Backlinks to {subdomain} are {backlinks}")
         new_rank = calculate_new_pagerank(backlinks, subdomain_count=subdomain_count)
 
-        params = [subdomain.domain, subdomain.extension, new_rank]
+        params = {'url':subdomain.domain,
+                  'extension':subdomain.extension,
+                  'new_rank':new_rank}
         db.execute(config.Config.SET_TEMPORARY_SUBDOMAIN_RANK.value,
             params=params, is_file=True)
 
@@ -47,6 +51,9 @@ def calculate_new_pagerank(backlinks: list[dict[str, Any]],
     for backlink in backlinks:
         if backlink['origin_pagerank'] is None:
             backlink['origin_pagerank'] = 1/subdomain_count
+
+        if backlink['forward_links'] == 0:
+            backlink['forward_links'] = 1
 
         new_rank += (backlink['occurrences'] * backlink['origin_pagerank']
             / backlink['forward_links'])

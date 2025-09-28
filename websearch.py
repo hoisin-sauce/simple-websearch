@@ -15,7 +15,9 @@ def search_for(query: str) -> list[str]:
     subdomains = get_subdomains_featuring(query_tokens,
         config.Config.RESULTS_PER_SEARCH.value)
     apply_token_rating(subdomains, query_tokens)
-    sorted_subdomains = sorted(subdomains, key=lambda subdomain: subdomain['query_ranking'] , reverse=True)
+    sorted_subdomains = sorted(
+        subdomains, key=lambda subdomain: subdomain['query_ranking'] ,
+        reverse=True)
     just_subdomains = [subdomain['url'] + subdomain['extension']
                        for subdomain in sorted_subdomains]
     return just_subdomains
@@ -65,3 +67,10 @@ def get_subdomain_tokens(subdomain: dict[str, Any]) -> dict[str, int]:
 def search_loop():
     while True:
         print(search_for(input("Search query: ")))
+
+if __name__ == "__main__":
+    _db = webstorage.Database(config.Config.DATABASE_NAME.value,
+                              config.Config.INIT_SCRIPT.value,
+                              script_directory=config.Config.SCRIPT_FOLDER.value, )
+    set_db(_db)
+    search_loop()

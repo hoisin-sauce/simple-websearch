@@ -1,6 +1,6 @@
 other config directory: config
 other config files:
-  - scripts.yaml
+  - scripts optimised.yaml
   - sites.yaml
   - testing.yaml
   - pagerank.yaml

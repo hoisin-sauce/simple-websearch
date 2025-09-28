@@ -24,17 +24,9 @@ class SiteDatabaseHandler:
 
     def delete_links_not_in(self, origin: Subdomain, links: Iterable[Subdomain]) -> None:
 
-        params = [link.domain + link.extension for link in links]
-
-        params = [origin.domain, origin.extension] + params
-
-        format_params = {"new_urls": ",".join(["?"] * len(links))}
-
         sql_script = self.db.get_script(config.Config.DELETE_OLD_LINKS.value)
 
-        sql_script = sql_script.format(**format_params)
-
-        self.db.execute(sql_script, params=params)
+        self.db.execute(sql_script, params=(origin.domain, origin.extension))
 
     def update_links(self, origin: Subdomain, targets: dict[Subdomain, int]) -> None:
         log.log(f"Update links for {origin} links provided are {targets}")
@@ -42,13 +34,30 @@ class SiteDatabaseHandler:
         assert all(isinstance(target, Subdomain) for target in targets), \
             "Targets must be subdomains"
 
-        self.delete_links_not_in(origin, targets.keys())
+        # self.delete_links_not_in(origin, targets.keys())
 
-        if config.Config.EXECUTE_MANY:
+        log.log(f"TARGETS: {list(target.domain + target.extension for target in targets)}")
+
+        if config.Config.EXECUTE_MANY.value:
             links = SiteDatabaseHandler.link_generator(origin, targets)
 
-            self.db.execute_many(config.Config.INSERT_MANY_PAGE_LINK.value,
-                            params=links)
+            targets = list(SiteDatabaseHandler.individual_link_generator(targets))
+
+            self.db.execute_many(config.Config.ENSURE_DOMAIN_EXISTS.value, params=targets)
+
+            self.db.execute_many(config.Config.ENSURE_LINK_EXISTS.value, params=targets)
+
+            #self.db.execute_many(config.Config.INSERT_MANY_PAGE_LINK.value,
+            #                params=links)
+
+            for link in links:
+                pre_check = self.db.execute(config.Config.CHECK_SUBDOMAIN.value,
+                                            params={"url": link["target_url"], "extension":link["target_extension"]}, is_file=True)
+                log.log(f"Inserting link {link}")
+                log.log(f"ID before insertion is {pre_check}")
+                self.db.execute(config.Config.INSERT_MANY_PAGE_LINK.value, params=link, is_file=True)
+                check = self.db.execute(config.Config.CHECK_LINK_INSERTED.value, params=link, is_file=True)
+                log.log(check)
 
         else:
             connection: dict[str, Any] = {
@@ -71,6 +80,13 @@ class SiteDatabaseHandler:
                                   params=connection)
 
     @staticmethod
+    def individual_link_generator(links: dict[Subdomain, int]) -> Generator[dict[str, str], None, None]:
+        for link in links.keys():
+            params =  {"url": link.domain, "extension": link.extension}
+            yield params
+
+
+    @staticmethod
     def link_generator(
                        origin: Subdomain, targets: dict[Subdomain, int]) -> \
             Generator[dict[str, Any], None, None]:
@@ -89,6 +105,8 @@ class SiteDatabaseHandler:
                     f"Error occurred while updating links for {origin}, link was {target}\n Traceback: {"\n".join(repr(i) for i in inspect.stack())}")
                 raise
 
+            if connection["target_url"] == "/somewhere.html":
+                log.log(f"Found connection to somewhere at {connection}")
             yield connection
 
     def update_tokens(self, site: Subdomain, page_tokens: TokenContainer) -> None:
@@ -148,16 +166,23 @@ class SiteDatabaseHandler:
                            + datetime.timedelta(
                     days=config.Config.DAYS_TILL_NEXT_PAGE_CHECK.value
                 )
-                           )
+        )
 
         params = {
             "url": link.domain,
             "checked": next_check_date,
             "extension": link.extension
         }
+        if sub := self.db.execute(config.Config.CHECK_SUBDOMAIN.value,
+                                  params=params, is_file=True):
+            params["id"] = sub[0]["id"]
+            self.db.execute(config.Config.UPDATE_LINK.value, params=params, is_file=True)
+        else:
+            self.db.execute_script(config.Config.INSERT_LINK.value,
+                params=params)
 
-        self.db.execute_script(config.Config.INSERT_LINK.value,
-                          params=params)
+        id = self.db.execute("SELECT id FROM Subdomain WHERE extension=:extension", params=params)
+        log.log(f"Inserted {link} into database with id {id}")
 
     def link_recently_checked(self, link: Subdomain) -> bool:
         if config.Config.ALLOW_DUPLICATES_DESPITE_TIMING.value:

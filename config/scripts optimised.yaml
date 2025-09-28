@@ -1,0 +1,43 @@
+script folder: sqlite scripts optimized
+database folder: db
+
+init script: init database.sql
+database name: webscrape.db
+
+# for automatic init script updates
+hash script: create hash table.sql
+hash insert: insert hash.sql
+hash check: check hash.sql
+
+# crawler
+get link: get link.sql
+insert link: insert individual link.sql
+insert token: insert individual token.sql
+find old links: find old links.sql
+insert page link: insert individual connection.sql
+time check link: checked recently.sql
+insert many page link: insert many links.sql
+insert many token: insert many tokens.sql
+ensure token exists: ensuretoken.sql
+ensure link exists: ensure link exists.sql
+ensure domain exists: ensure domains exist.sql
+delete old links: remove old links.sql
+delete old tokens: remove old tokens.sql
+check link inserted: check if link inserted.sql
+check subdomain: get individual subdomain.sql
+update link: update link.sql
+
+# pagerank
+get backlinks pagerank: get backlinks to page.sql
+get subdomains: get subdomains.sql
+set temporary subdomain rank:  set rank.sql
+migrate subdomain ranks: migrate rank.sql
+get subdomain count: page count.sql
+get total rank: get total rank.sql
+
+# search
+get query subdomains: find pages with tokens.sql
+get subdomain tokens: get token counts on page.sql
+
+# TODO possible issues with migration
+# 0 value for occurrences

@@ -13,12 +13,17 @@ only log relative calls: yes
 ignore internal calls: yes
 logging interval: 60
 track database times: no
-track pagerank times: no
+
 ignore names:
   - tokens
   - targets
 # set to all to log all, otherwise a list of thread names should be given
-allowed threads: all
+allowed threads:
+  - pagerank_daemon
+  - site_handler
+  - handle_queries
 
 # pagerank
 log total pagerank: yes
+track pagerank times: no
+track pagerank backlinks: no

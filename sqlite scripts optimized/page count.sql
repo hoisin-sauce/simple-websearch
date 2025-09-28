@@ -1,0 +1,1 @@
+SELECT Count(*) AS subdomain_count FROM Subdomain WHERE next_check <> '1970-01-01' LIMIT 1

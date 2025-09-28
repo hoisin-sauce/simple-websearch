@@ -3,6 +3,8 @@ import threading
 import urllib
 import urllib.error
 import requests
+from robots import RobotsParser
+
 import requestmanager
 import pagehandler
 import threadmanager
@@ -41,7 +43,7 @@ class SiteHandler:
         self.db = database_handler
         self.domain = domain
         self.command_queue = command_queue
-        self.rp = self.get_robots_handler()
+        self.rp : RobotsParser | None= self.get_robots_handler()
         self.queue_handler = queue_handler
 
         request_timings = self.get_request_timings()
@@ -67,7 +69,7 @@ class SiteHandler:
     def start(self):
         threading.Thread(target=self.site_handler).start()
 
-    def get_robots_handler(self) -> robots.RobotsParser:
+    def get_robots_handler(self) -> robots.RobotsParser | None:
         """
         Get the robots.txt parser from the given link
         :return: parser for domain
@@ -81,6 +83,9 @@ class SiteHandler:
                 f"Robots parser for {self.domain} "
                 + f"failed to be created robots url was {robots_txt}")
             raise
+        except TimeoutError:
+            log.log(f"Robots parser for {self.domain} failed due to timeout")
+            return None
         return rp
 
     def site_handler(self) -> None:
@@ -170,6 +175,8 @@ class SiteHandler:
         if not given will automatically fetch
         :return:
         """
+        if self.rp is None: # Error state in robots parser
+            return False # Assume unable to scrape
         return self.rp.can_fetch("*", link.get_url())
 
     def get_page(self, link: Subdomain) -> requests.Response:
