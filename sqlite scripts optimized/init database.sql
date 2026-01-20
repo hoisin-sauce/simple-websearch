@@ -44,3 +44,7 @@ CREATE TABLE TokenOnPage(
     FOREIGN KEY (token) REFERENCES Token(token),
     PRIMARY KEY (page, token)
 );
+
+CREATE TABLE UncheckedURL(
+    url TEXT
+);

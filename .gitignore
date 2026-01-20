@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+venv/
 
 # PyCharm
 .idea/
@@ -12,3 +13,6 @@ __pycache__/
 
 # Logging
 *.log
+
+# Dev notes
+*.notes

@@ -1,0 +1,5 @@
+robotspy
+PyYAML
+nltk
+requests
+beautifulsoup4

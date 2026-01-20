@@ -1,0 +1,1 @@
+INSERT INTO UncheckedURL(url) VALUES (?)

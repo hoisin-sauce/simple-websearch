@@ -1,0 +1,2 @@
+SELECT url
+FROM UncheckedURL

@@ -11,6 +11,7 @@ threaded server handling: yes
 ignore url fragments: yes
 threading timeout: 60 # assign null to ignore
 results per search: 10
+save in progress requests: yes
 
 site request interval seconds: 5
 site requests in interval: 3

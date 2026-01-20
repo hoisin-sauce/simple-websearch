@@ -1,5 +1,4 @@
 import datetime
-
 import log
 import threadmanager
 import websearch
@@ -14,10 +13,10 @@ import sitehandler
 import pagerank
 
 db: None | webstorage.Database= None
-db_handler : None | sitedatabasehandler.SiteDatabaseHandler = None
+db_handler: None | sitedatabasehandler.SiteDatabaseHandler = None
 
-thread_manager : None | threadmanager.ThreadManager = threadmanager.ThreadManager()
-queues : None | threadmanager.QueueContainer = None
+thread_manager: None | threadmanager.ThreadManager = threadmanager.ThreadManager()
+queues: None | threadmanager.QueueContainer = None
 
 
 def set_db(database: webstorage.Database):
@@ -25,6 +24,7 @@ def set_db(database: webstorage.Database):
     db = database
     db_handler = sitedatabasehandler.SiteDatabaseHandler(database)
     queues = threadmanager.QueueContainer(db_handler, sitehandler.SiteHandler)
+
 
 def old_links_daemon() -> None:
     while True:
@@ -43,6 +43,15 @@ def old_links_daemon() -> None:
             raise
 
 
+def get_unprocessed_links() -> list[Subdomain]:
+    subdomains: list[Subdomain] = list()
+    urls = db.execute(config.Config.GET_UNCHECKED_LINKS.value, is_file=True)
+    for url in urls:
+        subdomains.append(Subdomain(url['url']))
+
+    return subdomains
+
+
 def start_scraping() -> None:
     log.log("Starting background")
     background_scraper = threading.Thread(target=old_links_daemon, daemon=True)
@@ -54,14 +63,20 @@ def start_scraping() -> None:
         log.log(f"Starting scraping for {site}")
         sites_to_scrape[Subdomain(site)] = 0
 
+    log.log("Getting unprocessed links")
+    unprocessed_links: dict[Subdomain, int] = dict()
+    for subdomain in get_unprocessed_links():
+        unprocessed_links[subdomain] = 0
+
     log.log("Queuing links")
     queues.queue_links(sites_to_scrape)
+    queues.queue_links(unprocessed_links)
 
 
 if __name__ == "__main__":
     _db = webstorage.Database(config.Config.DATABASE_NAME.value,
-                         config.Config.INIT_SCRIPT.value,
-                         script_directory=config.Config.SCRIPT_FOLDER.value,)
+                              config.Config.INIT_SCRIPT.value,
+                              script_directory=config.Config.SCRIPT_FOLDER.value,)
 
     requestmanager.RequestManager.set_default_period(
         datetime.timedelta(
@@ -76,7 +91,9 @@ if __name__ == "__main__":
     )
 
     set_db(_db)
-    start_scraping()
     pagerank.set_db(_db)
-    pagerank.start_pagerank()
+    requestmanager.set_db(_db)
     websearch.set_db(_db)
+
+    start_scraping()
+    pagerank.start_pagerank()

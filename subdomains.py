@@ -1,21 +1,18 @@
 import config
 from urllib.parse import urlparse, ParseResult
 
+
 class Subdomain:
     o: ParseResult
     domain: str
     extension: str
 
     @staticmethod
-    def get_for_domain(domain):
-        return Subdomain.get_for_site(domain=domain)
-
-    @staticmethod
     def get_for_site(scheme="https", netloc="", path="", params="", query="", fragment=""):
         link = ParseResult(scheme=scheme, netloc=netloc, path=path, params=params, query=query, fragment=fragment)
         return Subdomain(link.geturl())
 
-    def __init__(self, link: str, parent_url: str | None =None):
+    def __init__(self, link: str, parent_url: str | None = None):
         o = urlparse(link)
         if config.Config.IGNORE_URL_FRAGMENTS.value:
             o = o._replace(fragment="")

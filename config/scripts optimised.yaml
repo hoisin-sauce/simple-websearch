@@ -26,6 +26,9 @@ delete old tokens: remove old tokens.sql
 check link inserted: check if link inserted.sql
 check subdomain: get individual subdomain.sql
 update link: update link.sql
+mark link as to be checked: to be checked.sql
+mark link as checked: set checked.sql
+get unchecked links: get unchecked.sql
 
 # pagerank
 get backlinks pagerank: get backlinks to page.sql
@@ -38,6 +41,3 @@ get total rank: get total rank.sql
 # search
 get query subdomains: find pages with tokens.sql
 get subdomain tokens: get token counts on page.sql
-
-# TODO possible issues with migration
-# 0 value for occurrences

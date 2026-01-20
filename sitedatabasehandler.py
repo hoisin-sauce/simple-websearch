@@ -7,6 +7,7 @@ import log
 import config
 import inspect
 
+
 class SiteDatabaseHandler:
     def __init__(self, database: webstorage.Database):
         self.db: webstorage.Database = database
@@ -52,7 +53,8 @@ class SiteDatabaseHandler:
 
             for link in links:
                 pre_check = self.db.execute(config.Config.CHECK_SUBDOMAIN.value,
-                                            params={"url": link["target_url"], "extension":link["target_extension"]}, is_file=True)
+                                            params={"url": link["target_url"], "extension": link["target_extension"]},
+                                            is_file=True)
                 log.log(f"Inserting link {link}")
                 log.log(f"ID before insertion is {pre_check}")
                 self.db.execute(config.Config.INSERT_MANY_PAGE_LINK.value, params=link, is_file=True)
@@ -77,18 +79,17 @@ class SiteDatabaseHandler:
                     raise
 
                 self.db.execute_script(config.Config.INSERT_PAGE_LINK.value,
-                                  params=connection)
+                                       params=connection)
 
     @staticmethod
     def individual_link_generator(links: dict[Subdomain, int]) -> Generator[dict[str, str], None, None]:
         for link in links.keys():
-            params =  {"url": link.domain, "extension": link.extension}
+            params = {"url": link.domain, "extension": link.extension}
             yield params
-
 
     @staticmethod
     def link_generator(
-                       origin: Subdomain, targets: dict[Subdomain, int]) -> \
+            origin: Subdomain, targets: dict[Subdomain, int]) -> \
             Generator[dict[str, Any], None, None]:
         connection: dict[str, Any] = {
             "origin_url": origin.domain,
@@ -115,11 +116,11 @@ class SiteDatabaseHandler:
         if config.Config.EXECUTE_MANY:
             token_names = page_tokens.token_name_tuples()
             self.db.execute_many(config.Config.ENSURE_TOKEN_EXISTS.value,
-                            params=token_names)
+                                 params=token_names)
 
             token_gen = self.token_generator(site, page_tokens)
             self.db.execute_many(config.Config.INSERT_MANY_TOKEN.value,
-                            params=token_gen)
+                                 params=token_gen)
         else:
             params: dict[str, Any] = {"extension": site.extension,
                                       "url": site.domain}
@@ -127,11 +128,11 @@ class SiteDatabaseHandler:
                 params["token"] = token.token_name
                 params["occurrences"] = token.token_count
                 self.db.execute_script(config.Config.INSERT_TOKEN.value,
-                                  params=params)
+                                       params=params)
 
     @staticmethod
     def token_generator(site: Subdomain, page_tokens: TokenContainer) -> \
-    Generator[dict[str, Any], None, None]:
+            Generator[dict[str, Any], None, None]:
         params: dict[str, Any] = {"extension": site.extension,
                                   "url": site.domain}
         for token in page_tokens.tokens():
@@ -166,7 +167,7 @@ class SiteDatabaseHandler:
                            + datetime.timedelta(
                     days=config.Config.DAYS_TILL_NEXT_PAGE_CHECK.value
                 )
-        )
+                           )
 
         params = {
             "url": link.domain,
@@ -179,10 +180,10 @@ class SiteDatabaseHandler:
             self.db.execute(config.Config.UPDATE_LINK.value, params=params, is_file=True)
         else:
             self.db.execute_script(config.Config.INSERT_LINK.value,
-                params=params)
+                                   params=params)
 
-        id = self.db.execute("SELECT id FROM Subdomain WHERE extension=:extension", params=params)
-        log.log(f"Inserted {link} into database with id {id}")
+        row_id = self.db.execute("SELECT id FROM Subdomain WHERE extension=:extension", params=params)
+        log.log(f"Inserted {link} into database with id {row_id}")
 
     def link_recently_checked(self, link: Subdomain) -> bool:
         if config.Config.ALLOW_DUPLICATES_DESPITE_TIMING.value:
@@ -190,7 +191,7 @@ class SiteDatabaseHandler:
 
         params = [link.domain, link.extension]
         check = self.db.execute(config.Config.TIME_CHECK_LINK.value, params=params,
-                           is_file=True)
+                                is_file=True)
 
         if not check:
             return False

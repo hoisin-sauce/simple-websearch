@@ -16,6 +16,7 @@ def dict_factory(cursor, row):
         d[col[0]] = row[idx]
     return d
 
+
 class Query:
     def __init__(self, function: Callable, *args, **kwargs):
         self.function = function
@@ -26,6 +27,7 @@ class Query:
 
     def get_result(self):
         return self.result.get()
+
 
 class Database:
     def __init__(self, database: str, init_script: str,
@@ -41,6 +43,7 @@ class Database:
         self.conn : sqlite3.Connection | None = None
 
         self.db_exists = self.database_exists()
+        print(self.db_exists)
 
         if config.Config.THREADED_SERVER_HANDLING.value:
             self.command_queue = queue.Queue()

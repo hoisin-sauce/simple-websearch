@@ -3,12 +3,22 @@ import queue
 import threading
 import time
 import requests
+
+import config
 import log
+import webstorage
+
+db : webstorage.Database | None = None
+
+def set_db(database: webstorage.Database):
+    global db
+    db = database
 
 class Request:
     """
     Class to simplify result return flow across multiple threads
     """
+
     def __init__(self, url: str):
         self.url = url
         self.result = queue.Queue()
@@ -21,7 +31,6 @@ class Request:
         """
         self.result.put(value)
 
-
     def get(self):
         """
         Returns the final result
@@ -31,6 +40,29 @@ class Request:
 
     def __repr__(self):
         return repr(self.url)
+
+
+class DatabaseLoggedRequest(Request):
+    """
+    Keeps track of requests that are currently being processed in case a shutdown or other error
+    occurs during processing
+    """
+    def __init__(self, url: str, database: webstorage.Database):
+        self.database = database
+        super().__init__(url)
+
+        # update the database by inserting the url into the remaining URLs
+        self.database.execute(config.Config.MARK_LINK_AS_TO_BE_CHECKED.value, (self.url,), True)
+
+    def set(self, value: requests.Response):
+        """
+        Marks the result as found in the database by removing the URL row and sets the result to be returned by the
+        get() method
+        """
+        # update the database by removing the url from the remaining urls queue
+        self.database.execute(config.Config.MARK_LINK_AS_CHECKED.value, (self.url,), True)
+
+        super().set(value)
 
 
 class RequestManager:
@@ -46,7 +78,7 @@ class RequestManager:
 
     @staticmethod
     def set_global_period(max_requests: int | None = None,
-            max_request_period: datetime.timedelta | None = None,) -> None:
+                          max_request_period: datetime.timedelta | None = None, ) -> None:
         """
         Set global request period and the maximum number of requests to allow.
         :param max_requests: Maximum number of requests to allow in the period.
@@ -58,7 +90,7 @@ class RequestManager:
 
     @staticmethod
     def set_default_period(request_period: datetime.timedelta | None = None,
-            max_requests: int | None = None) -> None:
+                           max_requests: int | None = None) -> None:
         """
         Set default request period and the maximum number of requests to allow.
         :param request_period: Timespan of request period
@@ -87,8 +119,8 @@ class RequestManager:
                 RequestManager.reset_global_request_period()
 
             if datetime.datetime.now() > \
-                RequestManager.global_request_period \
-                + RequestManager.global_request_period_start:
+                    RequestManager.global_request_period \
+                    + RequestManager.global_request_period_start:
                 RequestManager.reset_global_request_period()
 
             if RequestManager.global_requests < \
@@ -100,7 +132,6 @@ class RequestManager:
             RequestManager.wait_for_end_of_request_period()
             log.log("Request period ended")
             RequestManager.process_request(request)
-
 
     @staticmethod
     def reset_global_request_period() -> None:
@@ -135,7 +166,7 @@ class RequestManager:
         time.sleep(delay.seconds)
 
     def __init__(self, max_requests: int | None,
-                 period: datetime.timedelta | None,) -> None:
+                 period: datetime.timedelta | None, ) -> None:
         """
         Request handler for an individual source
         Used to rate limit requests
@@ -144,12 +175,14 @@ class RequestManager:
         """
         if period is None:
             assert RequestManager.default_request_period is not None, \
-                "No default request period specified, specify a default request period using RequestManger.set_default_period"
+                ("No default request period specified, "
+                 "specify a default request period using RequestManger.set_default_period")
             period = RequestManager.default_request_period
 
         if max_requests is None:
             assert RequestManager.default_max_requests_for_period is not None, \
-                "No default max requests specified, specify a default max requests value using RequestManger.set_default_period"
+                ("No default max requests specified, "
+                 "specify a default max requests value using RequestManger.set_default_period")
             max_requests = RequestManager.default_max_requests_for_period
 
         self.max_requests: int = max_requests
@@ -175,13 +208,16 @@ class RequestManager:
         :param url:
         :return:
         """
-        request: Request = Request(url)
+        if config.Config.SAVE_IN_PROGRESS_REQUESTS:
+            request: DatabaseLoggedRequest = DatabaseLoggedRequest(url, db)
+        else:
+            request: Request = Request(url)
         self.request_queue.put(request)
         result: requests.Response = request.get()
         del request
         return result
 
-    def handler(self)-> None:
+    def handler(self) -> None:
         """
         Internal method to handle requests to a single source
         :return:
@@ -216,7 +252,7 @@ class RequestManager:
             self.reset_request_period()
             self.add_global_request(request)
 
-    def add_global_request(self, url) -> None:
+    def add_global_request(self, url: Request) -> None:
         """
         Adds a global request to the queue from a local handler
         :param url:
